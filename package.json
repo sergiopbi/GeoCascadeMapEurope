@@ -1,0 +1,50 @@
+{
+  "name": "geocascade-map-europe",
+  "description": "GeoCascade Map \u2013 Europe \u2014 Power BI custom visual: offline map of cities aggregated into countries, districts and municipalities.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/<owner>/geocascade-map-europe"
+  },
+  "license": "MIT",
+  "scripts": {
+    "pbiviz": "pbiviz",
+    "start": "pbiviz start",
+    "package": "pbiviz package",
+    "eslint": "npx eslint . --ext .js,.jsx,.ts,.tsx",
+    "lint": "npx eslint .",
+    "build-municipalities": "TOL_M=5e-6 Q_M=1e4 TOL_D=1e-4 Q_D=5e3 node scripts_buildeuro.js"
+  },
+  "dependencies": {
+    "@types/d3": "7.4.3",
+    "@types/geojson": "^7946.0.16",
+    "@types/topojson-client": "^3.1.5",
+    "d3-array": "^3.2.4",
+    "d3-geo": "^3.1.1",
+    "d3-interpolate": "^3.0.1",
+    "d3-polygon": "^3.0.1",
+    "d3-scale": "^4.0.2",
+    "d3-selection": "^3.0.0",
+    "d3-shape": "^3.2.0",
+    "d3-transition": "^3.0.1",
+    "d3-zoom": "^3.0.0",
+    "powerbi-models": "^2.2.0",
+    "powerbi-visuals-api": "5.11.1",
+    "powerbi-visuals-utils-dataviewutils": "^7.0.0",
+    "powerbi-visuals-utils-formattingmodel": "^6.0.4",
+    "topojson-client": "^3.1.0"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.8.0",
+    "esbuild": "^0.28.2",
+    "eslint": "^9.11.1",
+    "eslint-plugin-powerbi-visuals": "^1.0.0",
+    "powerbi-visuals-tools": "^7.2.1",
+    "topojson-server": "^3.0.1",
+    "topojson-simplify": "^3.0.3",
+    "typescript": "5.5.4"
+  },
+  "version": "1.0.0",
+  "main": "index.js",
+  "keywords": [],
+  "author": "Boris Roncatto"
+}

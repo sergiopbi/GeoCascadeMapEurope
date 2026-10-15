@@ -1,0 +1,29 @@
+{
+  "visual": {
+    "name": "geoCascadeMapEurope",
+    "displayName": "GeoCascade Map \u2013 Europe",
+    "guid": "geoCascadeMapEurope3C5A0E9B1F7D4E2C8A6B5D4C3B2A1908",
+    "visualClassName": "Visual",
+    "version": "1.0.0.0",
+    "description": "Offline map of cities aggregated into countries, districts / regions (worldwide) and municipalities (Europe). Each city is placed inside its own country by municipality name, postal code or coordinates; selection filters the page.",
+    "supportUrl": "https://example.com/geocascade-map/support",
+    "gitHubUrl": ""
+  },
+  "apiVersion": "5.11.1",
+  "author": {
+    "name": "Boris Roncatto",
+    "email": "borisroncattov10@gmail.com"
+  },
+  "assets": {
+    "icon": "assets/icon.png"
+  },
+  "externalJS": null,
+  "style": "style/visual.less",
+  "capabilities": "capabilities.json",
+  "dependencies": null,
+  "stringResources": [
+    "stringResources/en-US/resources.resjson",
+    "stringResources/pt-PT/resources.resjson"
+  ],
+  "version": "1.0.0.0"
+}

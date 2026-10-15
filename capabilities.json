@@ -1,0 +1,820 @@
+{
+    "dataRoles": [
+        {
+            "displayName": "City",
+            "name": "location",
+            "kind": "Grouping",
+            "description": "City of each row (optionally a second level below it: postal code, or customer/store with Latitude/Longitude). The map aggregates the cities into countries, districts and municipalities.",
+            "displayNameKey": "Role_Location",
+            "descriptionKey": "Role_Location_Desc"
+        },
+        {
+            "displayName": "Country",
+            "name": "countryGroup",
+            "kind": "Grouping",
+            "description": "Country column of the same table (e.g. Dim[Country], name or ISO2/ISO3). Each city is read inside its own country, so cities with the same name in different countries stay separate.",
+            "displayNameKey": "Role_CountryGroup",
+            "descriptionKey": "Role_CountryGroup_Desc"
+        },
+        {
+            "displayName": "Detail (legend)",
+            "name": "legend",
+            "kind": "Grouping",
+            "description": "Optional. Splits each bubble/area into a donut with one slice per category.",
+            "displayNameKey": "Role_Legend",
+            "descriptionKey": "Role_Legend_Desc"
+        },
+        {
+            "displayName": "Value (color)",
+            "name": "color",
+            "kind": "Measure",
+            "description": "Measure that drives the color scale of areas and bubbles.",
+            "displayNameKey": "Role_Color",
+            "descriptionKey": "Role_Color_Desc"
+        },
+        {
+            "displayName": "Size",
+            "name": "size",
+            "kind": "Measure",
+            "description": "Measure that drives bubble size. When empty, Value (color) is used.",
+            "displayNameKey": "Role_Size",
+            "descriptionKey": "Role_Size_Desc"
+        },
+        {
+            "displayName": "Postal code (optional)",
+            "name": "postalCode",
+            "kind": "Measure",
+            "description": "Measure returning the postal code, used to place cities whose name is not found and the level below the city. Alternatively put the postal code column as the last Location level.",
+            "displayNameKey": "Role_PostalCode",
+            "descriptionKey": "Role_PostalCode_Desc"
+        },
+        {
+            "displayName": "Latitude (lowest level)",
+            "name": "latitude",
+            "kind": "Measure",
+            "description": "Explicit measure (e.g. AVERAGE/SELECTEDVALUE). Used for the level below the city (customer, store, postal code) and as a fallback when a city is not found.",
+            "displayNameKey": "Role_Latitude",
+            "descriptionKey": "Role_LatLon_Desc"
+        },
+        {
+            "displayName": "Longitude (lowest level)",
+            "name": "longitude",
+            "kind": "Measure",
+            "description": "Explicit measure (e.g. AVERAGE/SELECTEDVALUE). Used for the level below the city (customer, store, postal code) and as a fallback when a city is not found.",
+            "displayNameKey": "Role_Longitude",
+            "descriptionKey": "Role_LatLon_Desc"
+        },
+        {
+            "displayName": "Tooltips",
+            "name": "tooltips",
+            "kind": "Measure",
+            "displayNameKey": "Role_Tooltips"
+        }
+    ],
+    "dataViewMappings": [
+        {
+            "conditions": [
+                {
+                    "location": {
+                        "max": 2
+                    },
+                    "legend": {
+                        "max": 1
+                    },
+                    "color": {
+                        "max": 1
+                    },
+                    "size": {
+                        "max": 1
+                    },
+                    "latitude": {
+                        "max": 1
+                    },
+                    "longitude": {
+                        "max": 1
+                    },
+                    "postalCode": {
+                        "max": 1
+                    },
+                    "countryGroup": {
+                        "max": 1
+                    }
+                }
+            ],
+            "categorical": {
+                "categories": {
+                    "select": [
+                        {
+                            "for": {
+                                "in": "countryGroup"
+                            }
+                        },
+                        {
+                            "for": {
+                                "in": "location"
+                            }
+                        }
+                    ],
+                    "dataReductionAlgorithm": {
+                        "top": {
+                            "count": 30000
+                        }
+                    }
+                },
+                "values": {
+                    "group": {
+                        "by": "legend",
+                        "select": [
+                            {
+                                "for": {
+                                    "in": "color"
+                                }
+                            },
+                            {
+                                "for": {
+                                    "in": "size"
+                                }
+                            },
+                            {
+                                "for": {
+                                    "in": "postalCode"
+                                }
+                            },
+                            {
+                                "for": {
+                                    "in": "latitude"
+                                }
+                            },
+                            {
+                                "for": {
+                                    "in": "longitude"
+                                }
+                            },
+                            {
+                                "for": {
+                                    "in": "tooltips"
+                                }
+                            }
+                        ],
+                        "dataReductionAlgorithm": {
+                            "top": {
+                                "count": 60
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    ],
+    "drilldown": {
+        "roles": [
+            "location"
+        ]
+    },
+    "objects": {
+        "general": {
+            "properties": {
+                "formatString": {
+                    "type": {
+                        "formatting": {
+                            "formatString": true
+                        }
+                    }
+                },
+                "filter": {
+                    "type": {
+                        "filter": true
+                    }
+                }
+            }
+        },
+        "mapCard": {
+            "properties": {
+                "countryMode": {
+                    "type": {
+                        "enumeration": [
+                            {
+                                "value": "area"
+                            },
+                            {
+                                "value": "bubble"
+                            },
+                            {
+                                "value": "both"
+                            }
+                        ]
+                    }
+                },
+                "showContext": {
+                    "type": {
+                        "bool": true
+                    }
+                },
+                "contextColor": {
+                    "type": {
+                        "fill": {
+                            "solid": {
+                                "color": true
+                            }
+                        }
+                    }
+                },
+                "contextBorderColor": {
+                    "type": {
+                        "fill": {
+                            "solid": {
+                                "color": true
+                            }
+                        }
+                    }
+                },
+                "enableZoom": {
+                    "type": {
+                        "bool": true
+                    }
+                },
+                "showReset": {
+                    "type": {
+                        "bool": true
+                    }
+                },
+                "defaultCountry": {
+                    "type": {
+                        "text": true
+                    }
+                },
+                "cityMode": {
+                    "type": {
+                        "enumeration": [
+                            {
+                                "value": "area"
+                            },
+                            {
+                                "value": "bubble"
+                            },
+                            {
+                                "value": "both"
+                            }
+                        ]
+                    }
+                },
+                "districtMode": {
+                    "type": {
+                        "enumeration": [
+                            {
+                                "value": "area"
+                            },
+                            {
+                                "value": "bubble"
+                            },
+                            {
+                                "value": "both"
+                            }
+                        ]
+                    }
+                },
+                "cityStart": {
+                    "type": {
+                        "enumeration": [
+                            {
+                                "value": "country"
+                            },
+                            {
+                                "value": "district"
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        "areaCard": {
+            "properties": {
+                "gradientType": {
+                    "type": {
+                        "enumeration": [
+                            {
+                                "value": "two"
+                            },
+                            {
+                                "value": "three"
+                            },
+                            {
+                                "value": "four"
+                            }
+                        ]
+                    }
+                },
+                "minColor": {
+                    "type": {
+                        "fill": {
+                            "solid": {
+                                "color": true
+                            }
+                        }
+                    }
+                },
+                "midColor": {
+                    "type": {
+                        "fill": {
+                            "solid": {
+                                "color": true
+                            }
+                        }
+                    }
+                },
+                "maxColor": {
+                    "type": {
+                        "fill": {
+                            "solid": {
+                                "color": true
+                            }
+                        }
+                    }
+                },
+                "autoRange": {
+                    "type": {
+                        "bool": true
+                    }
+                },
+                "rangeMin": {
+                    "type": {
+                        "numeric": true
+                    }
+                },
+                "rangeMax": {
+                    "type": {
+                        "numeric": true
+                    }
+                },
+                "autoMid": {
+                    "type": {
+                        "bool": true
+                    }
+                },
+                "midValue": {
+                    "type": {
+                        "numeric": true
+                    }
+                },
+                "fxFill": {
+                    "type": {
+                        "fill": {
+                            "solid": {
+                                "color": true
+                            }
+                        }
+                    }
+                },
+                "noDataColor": {
+                    "type": {
+                        "fill": {
+                            "solid": {
+                                "color": true
+                            }
+                        }
+                    }
+                },
+                "borderColor": {
+                    "type": {
+                        "fill": {
+                            "solid": {
+                                "color": true
+                            }
+                        }
+                    }
+                },
+                "borderWidth": {
+                    "type": {
+                        "numeric": true
+                    }
+                },
+                "areaOpacity": {
+                    "type": {
+                        "numeric": true
+                    }
+                },
+                "mid2Color": {
+                    "type": {
+                        "fill": {
+                            "solid": {
+                                "color": true
+                            }
+                        }
+                    }
+                },
+                "scaleType": {
+                    "type": {
+                        "enumeration": [
+                            {
+                                "value": "linear"
+                            },
+                            {
+                                "value": "log"
+                            },
+                            {
+                                "value": "rank"
+                            },
+                            {
+                                "value": "quantile"
+                            },
+                            {
+                                "value": "clip"
+                            }
+                        ]
+                    }
+                },
+                "classes": {
+                    "type": {
+                        "numeric": true
+                    }
+                },
+                "pLow": {
+                    "type": {
+                        "numeric": true
+                    }
+                },
+                "pHigh": {
+                    "type": {
+                        "numeric": true
+                    }
+                },
+                "lineIntensity": {
+                    "type": {
+                        "numeric": true
+                    }
+                },
+                "negativeMode": {
+                    "type": {
+                        "enumeration": [
+                            {
+                                "value": "own"
+                            },
+                            {
+                                "value": "diverging"
+                            },
+                            {
+                                "value": "scale"
+                            }
+                        ]
+                    }
+                },
+                "negativeColor": {
+                    "type": {
+                        "fill": {
+                            "solid": {
+                                "color": true
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "bubbleCard": {
+            "properties": {
+                "bubbleColorMode": {
+                    "type": {
+                        "enumeration": [
+                            {
+                                "value": "gradient"
+                            },
+                            {
+                                "value": "fixed"
+                            }
+                        ]
+                    }
+                },
+                "bubbleColor": {
+                    "type": {
+                        "fill": {
+                            "solid": {
+                                "color": true
+                            }
+                        }
+                    }
+                },
+                "minRadius": {
+                    "type": {
+                        "numeric": true
+                    }
+                },
+                "maxRadius": {
+                    "type": {
+                        "numeric": true
+                    }
+                },
+                "bubbleOpacity": {
+                    "type": {
+                        "numeric": true
+                    }
+                },
+                "bubbleBorderColor": {
+                    "type": {
+                        "fill": {
+                            "solid": {
+                                "color": true
+                            }
+                        }
+                    }
+                },
+                "bubbleBorderWidth": {
+                    "type": {
+                        "numeric": true
+                    }
+                }
+            }
+        },
+        "categoryColors": {
+            "properties": {
+                "fill": {
+                    "type": {
+                        "fill": {
+                            "solid": {
+                                "color": true
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "legendCard": {
+            "properties": {
+                "show": {
+                    "type": {
+                        "bool": true
+                    }
+                },
+                "position": {
+                    "type": {
+                        "enumeration": [
+                            {
+                                "value": "top"
+                            },
+                            {
+                                "value": "bottom"
+                            }
+                        ]
+                    }
+                },
+                "showTitle": {
+                    "type": {
+                        "bool": true
+                    }
+                },
+                "fontSize": {
+                    "type": {
+                        "numeric": true
+                    }
+                },
+                "fontColor": {
+                    "type": {
+                        "fill": {
+                            "solid": {
+                                "color": true
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "labelsCard": {
+            "properties": {
+                "show": {
+                    "type": {
+                        "bool": true
+                    }
+                },
+                "content": {
+                    "type": {
+                        "enumeration": [
+                            {
+                                "value": "name"
+                            },
+                            {
+                                "value": "value"
+                            },
+                            {
+                                "value": "both"
+                            }
+                        ]
+                    }
+                },
+                "fontSize": {
+                    "type": {
+                        "numeric": true
+                    }
+                },
+                "fontColor": {
+                    "type": {
+                        "fill": {
+                            "solid": {
+                                "color": true
+                            }
+                        }
+                    }
+                },
+                "halo": {
+                    "type": {
+                        "bool": true
+                    }
+                },
+                "autoHide": {
+                    "type": {
+                        "bool": true
+                    }
+                },
+                "displayUnits": {
+                    "type": {
+                        "enumeration": [
+                            {
+                                "value": "auto"
+                            },
+                            {
+                                "value": "none"
+                            },
+                            {
+                                "value": "thousands"
+                            },
+                            {
+                                "value": "millions"
+                            },
+                            {
+                                "value": "billions"
+                            }
+                        ]
+                    }
+                },
+                "decimals": {
+                    "type": {
+                        "numeric": true
+                    }
+                }
+            }
+        },
+        "donutCard": {
+            "properties": {
+                "donutHole": {
+                    "type": {
+                        "numeric": true
+                    }
+                },
+                "sliceBorderColor": {
+                    "type": {
+                        "fill": {
+                            "solid": {
+                                "color": true
+                            }
+                        }
+                    }
+                },
+                "sliceBorderWidth": {
+                    "type": {
+                        "numeric": true
+                    }
+                },
+                "areaDonut": {
+                    "type": {
+                        "bool": true
+                    }
+                },
+                "areaDonutSize": {
+                    "type": {
+                        "numeric": true
+                    }
+                }
+            }
+        },
+        "basemapCard": {
+            "properties": {
+                "style": {
+                    "type": {
+                        "enumeration": [
+                            {
+                                "value": "none"
+                            },
+                            {
+                                "value": "light"
+                            },
+                            {
+                                "value": "grey"
+                            },
+                            {
+                                "value": "dark"
+                            }
+                        ]
+                    }
+                },
+                "showRoads": {
+                    "type": {
+                        "bool": true
+                    }
+                },
+                "showPlaces": {
+                    "type": {
+                        "bool": true
+                    }
+                },
+                "placeDensity": {
+                    "type": {
+                        "enumeration": [
+                            {
+                                "value": "low"
+                            },
+                            {
+                                "value": "medium"
+                            },
+                            {
+                                "value": "high"
+                            }
+                        ]
+                    }
+                },
+                "placeFontSize": {
+                    "type": {
+                        "numeric": true
+                    }
+                },
+                "showCountryNames": {
+                    "type": {
+                        "bool": true
+                    }
+                },
+                "roadIntensity": {
+                    "type": {
+                        "numeric": true
+                    }
+                },
+                "placesPerArea": {
+                    "type": {
+                        "numeric": true
+                    }
+                }
+            }
+        },
+        "selectionCard": {
+            "properties": {
+                "selBorderColor": {
+                    "type": {
+                        "fill": {
+                            "solid": {
+                                "color": true
+                            }
+                        }
+                    }
+                },
+                "selBorderWidth": {
+                    "type": {
+                        "numeric": true
+                    }
+                },
+                "dimOpacity": {
+                    "type": {
+                        "numeric": true
+                    }
+                },
+                "interaction": {
+                    "type": {
+                        "enumeration": [
+                            {
+                                "value": "filter"
+                            },
+                            {
+                                "value": "highlight"
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        "drillState": {
+            "properties": {
+                "focus": {
+                    "type": {
+                        "text": true
+                    }
+                },
+                "sel": {
+                    "type": {
+                        "text": true
+                    }
+                }
+            }
+        }
+    },
+    "tooltips": {
+        "supportedTypes": {
+            "default": true,
+            "canvas": true
+        },
+        "roles": [
+            "tooltips"
+        ],
+        "supportEnhancedTooltips": true
+    },
+    "supportsHighlight": true,
+    "supportsKeyboardFocus": true,
+    "supportsLandingPage": true,
+    "supportsEmptyDataView": true,
+    "supportsMultiVisualSelection": true,
+    "privileges": [],
+    "supportsSynchronizingFilterState": true
+}

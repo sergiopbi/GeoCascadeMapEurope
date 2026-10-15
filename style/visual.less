@@ -1,0 +1,450 @@
+.gdm-root {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    font-family: "Segoe UI", wf_segoe-ui_normal, helvetica, arial, sans-serif;
+    box-sizing: border-box;
+    user-select: none;
+}
+
+.gdm-mapwrap {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.gdm-svg {
+    display: block;
+    cursor: default;
+}
+
+.gdm-mark {
+    cursor: pointer;
+    outline: none;
+    transition: opacity 120ms ease, fill-opacity 120ms ease;
+}
+
+.gdm-mark:focus {
+    outline: none;
+}
+
+.gdm-mark:focus-visible {
+    stroke: #605e5c;
+    stroke-width: 2px;
+    stroke-dasharray: 3 2;
+}
+
+.gdm-place {
+    pointer-events: none;
+    font-family: "Segoe UI", helvetica, arial, sans-serif;
+    paint-order: stroke;
+    stroke-width: 3px;
+    stroke-linejoin: round;
+}
+
+
+.gdm-label {
+    pointer-events: none;
+    font-family: "Segoe UI", helvetica, arial, sans-serif;
+}
+
+.gdm-halo {
+    paint-order: stroke;
+    stroke: #fff;
+    stroke-width: 3px;
+    stroke-linejoin: round;
+}
+
+.gdm-legend {
+    flex: 0 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 12px;
+    padding: 4px 8px;
+    box-sizing: border-box;
+}
+
+.gdm-legend-title {
+    font-weight: 600;
+    margin-right: 4px;
+}
+
+.gdm-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    outline: none;
+}
+
+.gdm-legend-item:focus {
+    text-decoration: underline;
+}
+
+.gdm-swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex: 0 0 auto;
+}
+
+.gdm-grad-bar {
+    display: inline-block;
+    width: 140px;
+    max-width: 40%;
+    height: 10px;
+    border-radius: 2px;
+}
+
+.gdm-reset {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 26px;
+    height: 26px;
+    border: 1px solid #c8c6c4;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.92);
+    color: #333;
+    font-size: 15px;
+    line-height: 22px;
+    padding: 0;
+    cursor: pointer;
+}
+
+.gdm-reset:hover {
+    background: #f3f2f1;
+}
+
+.gdm-warning {
+    position: absolute;
+    left: 6px;
+    bottom: 4px;
+    font-size: 10px;
+    color: #a4262c;
+    background: rgba(255, 255, 255, 0.85);
+    padding: 1px 4px;
+    border-radius: 3px;
+    cursor: help;
+}
+
+.gdm-landing {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    text-align: center;
+    font-size: 12px;
+    color: #444;
+    padding: 0 16px;
+    pointer-events: none;
+
+    div {
+        margin: 4px 0;
+    }
+}
+
+.gdm-landing-title {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.gdm-error {
+    color: #a4262c;
+    font-weight: 600;
+}
+
+.gdm-error-stack {
+    color: #a4262c;
+    font-size: 9px;
+    text-align: left;
+    white-space: pre-wrap;
+}
+
+
+
+.gdm-focuschip {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 70%;
+    height: 24px;
+    padding: 0 4px 0 10px;
+    border-radius: 12px;
+    background: rgba(37, 36, 35, 0.82);
+    color: #fff;
+    font-size: 11px;
+    font-family: "Segoe UI", helvetica, arial, sans-serif;
+
+    span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    button {
+        border: none;
+        background: transparent;
+        color: #fff;
+        cursor: pointer;
+        font-size: 12px;
+        padding: 0 6px;
+    }
+}
+
+.gdm-unmatched {
+    position: absolute;
+    left: 6px;
+    bottom: 22px;
+    width: 280px;
+    max-width: calc(100% - 12px);
+    max-height: 60%;
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+    border: 1px solid #c8c6c4;
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    font-size: 11px;
+    color: #252423;
+    z-index: 5;
+}
+
+.gdm-unmatched-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 8px;
+    font-weight: 600;
+    border-bottom: 1px solid #edebe9;
+
+    button {
+        border: none;
+        background: none;
+        cursor: pointer;
+        font-size: 12px;
+    }
+}
+
+.gdm-unmatched-tip {
+    padding: 4px 8px;
+    color: #605e5c;
+    font-size: 10px;
+}
+
+.gdm-unmatched-list {
+    overflow-y: auto;
+    padding: 2px 0 6px;
+}
+
+.gdm-unmatched-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 2px 8px;
+
+    &:nth-child(odd) {
+        background: #faf9f8;
+    }
+}
+
+.gdm-um-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.gdm-um-val {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.gdm-warning {
+    cursor: pointer;
+}
+
+.gdm-grad-bar {
+    position: relative;
+}
+
+.gdm-grad-tick {
+    position: absolute;
+    top: -2px;
+    bottom: -2px;
+    width: 1px;
+    background: rgba(0, 0, 0, 0.45);
+}
+
+.gdm-grad-note {
+    opacity: 0.75;
+    font-style: italic;
+}
+
+.gdm-legend-class {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.gdm-swatch-sq {
+    border-radius: 2px;
+}
+
+.gdm-tools {
+    position: absolute;
+    top: 36px;
+    right: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.gdm-toolbtn {
+    width: 26px;
+    height: 26px;
+    border: 1px solid #c8c6c4;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.92);
+    color: #333;
+    font-size: 14px;
+    line-height: 22px;
+    padding: 0;
+    cursor: pointer;
+
+    &:hover {
+        background: #f3f2f1;
+    }
+
+    &.gdm-active {
+        background: #1f5e9c;
+        color: #fff;
+        border-color: #1f5e9c;
+    }
+}
+
+.gdm-drawing {
+    cursor: crosshair;
+    touch-action: none;
+
+    .gdm-mark {
+        pointer-events: none;
+    }
+}
+
+.gdm-zone {
+    fill: rgba(31, 94, 156, 0.10);
+    stroke: #1f5e9c;
+    stroke-width: 1.5px;
+    stroke-dasharray: 5 3;
+    pointer-events: none;
+}
+
+.gdm-zone-live {
+    fill: rgba(31, 94, 156, 0.06);
+}
+
+.gdm-chip-part {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+
+    & + .gdm-chip-part {
+        margin-left: 10px;
+        padding-left: 10px;
+        border-left: 1px solid rgba(255, 255, 255, 0.35);
+    }
+}
+
+.gdm-viewtoggle {
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    border: 1px solid #c8c6c4;
+    border-radius: 13px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.95);
+    z-index: 4;
+}
+
+.gdm-viewbtn {
+    border: none;
+    background: transparent;
+    color: #323130;
+    font: 11px "Segoe UI", helvetica, arial, sans-serif;
+    padding: 4px 12px;
+    cursor: pointer;
+
+    & + .gdm-viewbtn {
+        border-left: 1px solid #c8c6c4;
+    }
+
+    &:hover {
+        background: #f3f2f1;
+    }
+
+    &.gdm-active {
+        background: #1f5e9c;
+        color: #fff;
+    }
+}
+
+.gdm-chip-more {
+    border: 0;
+    border-radius: 8px;
+    padding: 1px 6px;
+    margin-left: 4px;
+    font-size: 11px;
+    color: #fff;
+    background: rgba(255, 255, 255, 0.22);
+    cursor: pointer;
+    &:hover { background: rgba(255, 255, 255, 0.38); }
+}
+
+.gdm-chiplist {
+    position: absolute;
+    z-index: 6;
+    min-width: 160px;
+    max-width: 280px;
+    background: #fff;
+    color: #252423;
+    border: 1px solid #c8c6c4;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+    font-size: 12px;
+    .gdm-chiplist-head { padding: 6px 10px; font-weight: 600; border-bottom: 1px solid #edebe9; }
+    .gdm-chiplist-body { max-height: 200px; overflow-y: auto; padding: 4px 0; }
+    .gdm-chiplist-body > div { padding: 2px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
+
+.gdm-labelbtn {
+    font-size: 11px;
+    font-weight: 600;
+    &.gdm-active { background: #252423; color: #fff; border-color: #252423; }
+}
+
+.gdm-note {
+    position: absolute;
+    left: 6px;
+    right: 40px;
+    bottom: 22px;
+    font-size: 11px;
+    color: #8a4b00;
+    background: rgba(255, 244, 206, 0.95);
+    border: 1px solid #f2c94c;
+    padding: 3px 6px;
+    border-radius: 4px;
+    z-index: 5;
+}
+
+.gdm-legend-neg {
+    margin-right: 10px;
+    .gdm-grad-bar-neg { width: 40px; }
+}
