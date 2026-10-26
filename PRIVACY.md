@@ -42,4 +42,4 @@ map) — nothing that sends data anywhere.
 
 Questions about this privacy policy can be raised via the support channel listed in
 the AppSource listing, or as an issue on the source repository:
-https://github.com/sergiopbi/WorldDistrictShapeMap
+https://github.com/sergiopbi/World-District-Shape-Map

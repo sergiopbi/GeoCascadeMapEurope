@@ -3,7 +3,7 @@
   "description": "World District Shape Map — Power BI custom visual: offline shape map of cities aggregated into countries, districts and municipalities.",
   "repository": {
     "type": "git",
-    "url": "https://github.com/sergiopbi/WorldDistrictShapeMap.git"
+    "url": "https://github.com/sergiopbi/World-District-Shape-Map.git"
   },
   "license": "MIT",
   "scripts": {

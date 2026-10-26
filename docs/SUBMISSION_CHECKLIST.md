@@ -23,7 +23,7 @@ Two separate things, don't conflate them:
 
 - [x] API version 5.11.1 (latest), `npm run package` with zero lint errors.
 - [x] Real support URL (`/issues`) and gitHubUrl in `pbiviz.json`.
-- [x] Privacy policy at a public URL: https://github.com/sergiopbi/WorldDistrictShapeMap/blob/main/PRIVACY.md
+- [x] Privacy policy at a public URL: https://github.com/sergiopbi/World-District-Shape-Map/blob/main/PRIVACY.md
 - [x] 300×300 logo, 5 screenshots 1366×768 (≤ 1 MB each).
 - [ ] Sample .pbix saved in the repo root with the final package imported.
 - [ ] Data licences reviewed (docs/KNOWN_LIMITATIONS.md § 1).
@@ -69,7 +69,7 @@ above.
   **Country**; (2) a measure in **Value (color)** — optional Detail, Size, Postal code,
   Tooltips; (3) switch views, click to filter, search with Enter, check the ⚠ list. The
   sample report has a "How to use" page.
-- Support: https://github.com/sergiopbi/WorldDistrictShapeMap/issues
+- Support: https://github.com/sergiopbi/World-District-Shape-Map/issues
 
 **Technical configuration**: upload `WorldDistrictShapeMap.pbiviz` and `WorldDistrictShapeMap.pbix`.
 
@@ -81,7 +81,7 @@ above.
 > country column (name or ISO2/ISO3) to "Country" and a numeric measure to
 > "Value (color)". The sample also has a Detail field (donuts), a Postal code measure and
 > three rows with a misspelled country that show the "locations not found" list.
-> Source code: https://github.com/sergiopbi/WorldDistrictShapeMap
+> Source code: https://github.com/sergiopbi/World-District-Shape-Map
 
 Partner Center breaks silently behind ad/tracker blockers (Brave Shields) and private
 windows — use a normal window with blockers off.
