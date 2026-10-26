@@ -179,7 +179,7 @@ function segDist2(px: number, py: number, ax: number, ay: number, bx: number, by
 const B64 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_-";
 const B64V: { [c: string]: number } = {};
 for (let i = 0; i < 64; i++) B64V[B64[i]] = i;
-/** Compact arcs (see scripts_buildeuro.js): per arc a varint count, then zig-zag varints of delta-encoded integers. */
+/** Compact arcs (see tools/buildeuro.js): per arc a varint count, then zig-zag varints of delta-encoded integers. */
 function decodeArcs(str: string): number[][][] {
     const arcs: number[][][] = [];
     let i = 0;

@@ -1,6 +1,8 @@
 node_modules/
 .tmp/
 dist/
-test/out/
-test/pkg/
-webpack.statistics.*.html
+*.log
+.DS_Store
+webpack.statistics.prod.html
+data/
+test/

@@ -1,11 +1,13 @@
 // Corrects GeoNames postal-code coordinates for countries that have embedded municipality polygons.
 // Some codes carry a province-level coordinate (e.g. ES 12006 Castellón de la Plana sits at the province centroid):
 // when a code's coordinate falls outside the municipality the code belongs to, it is moved to that municipality's label point.
-// Usage: node scripts_fixpostal.js <postal csv dir (data/x)>  — rewrites x/PT and x/ES CSVs in place.
+// Usage: node tools/fixpostal.js <postal csv dir (data/x)>  — rewrites x/PT and x/ES CSVs in place.
 const fs = require('fs');
+// raw source data (geoBoundaries, Natural Earth, CAOP, GeoNames postal codes) — not in the repository, see README › Data
+const DATA = process.env.GEO_DATA_DIR || require('path').join(__dirname, '..', 'data');
 const path = require('path');
 
-const X = process.argv[2] || '/root/zauberware/postal-codes-json-xml-csv/data/x';
+const X = process.argv[2] || path.join(DATA, 'zauberware/postal-codes-json-xml-csv/data/x');
 const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '');
 /** "Regueras, Las" -> "Las Regueras"; "Castellón de la Plana/Castelló de la Plana" -> both */
 const variants = s => {
@@ -48,9 +50,9 @@ function load(file, keyFn) {
 }
 
 const COUNTRIES = {
-  PT: { munis: () => load('/root/nmota_caop/Portugal_Municipalities.geojson', p => [String(p.DICO || ''), ...variants(p.Concelho || p.MUNICIPIO)]),
+  PT: { munis: () => load(path.join(DATA, 'nmota_caop/Portugal_Municipalities.geojson'), p => [String(p.DICO || ''), ...variants(p.Concelho || p.MUNICIPIO)]),
         key: r => [r.province_code, ...variants(r.province)] },
-  ES: { munis: () => load('/root/gb/esp3.geojson', p => variants(p.shapeName)),
+  ES: { munis: () => load(path.join(DATA, 'gb/esp3.geojson'), p => variants(p.shapeName)),
         key: r => variants(r.community) }
 };
 

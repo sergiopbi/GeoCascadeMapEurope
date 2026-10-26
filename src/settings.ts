@@ -31,6 +31,13 @@ const range = (a: number, b: number): powerbi.visuals.NumUpDownFormat => ({
     maxValue: { type: 1 as powerbi.visuals.ValidatorType.Max, value: b } as powerbi.visuals.MaxValidator<number>
 });
 
+export const SEARCH_SCOPE_ITEMS: powerbi.IEnumMember[] = [
+    item("all", "Opt_Scope_All", "All"),
+    item("country", "Opt_Scope_Country", "Country"),
+    item("district", "Opt_Scope_District", "District / region"),
+    item("municipality", "Opt_Scope_Municipality", "Municipality")
+];
+
 const MODE_ITEMS: powerbi.IEnumMember[] = [
     item("area", "Opt_Mode_Area", "Area"),
     item("bubble", "Opt_Mode_Bubble", "Bubble"),
@@ -270,11 +277,17 @@ export class DonutCard extends Card {
     sliceBorderWidth = new formattingSettings.NumUpDown({ name: "sliceBorderWidth", ...t("Donut_SliceBorderWidth", "Separator width"), value: 1, options: range(0, 6) });
     areaDonut = new formattingSettings.ToggleSwitch({ name: "areaDonut", ...t("Donut_AreaDonut", "Donut at area center"), value: true });
     areaDonutSize = new formattingSettings.NumUpDown({ name: "areaDonutSize", ...t("Donut_AreaDonutSize", "Area donut radius (px)"), value: 16, options: range(4, 80) });
+    showDonuts = new formattingSettings.ToggleSwitch({ name: "showDonuts", ...t("Donut_Show", "Show donuts"), value: true });
+    maxDonuts = new formattingSettings.NumUpDown({
+        name: "maxDonuts", ...t("Donut_Max", "Maximum donuts (largest first)"),
+        ...d("Donut_Max_Desc", "Only the largest locations get a donut; the others keep a plain bubble (or just the area color). 0 = all."),
+        value: 25, options: range(0, 500)
+    });
 
     name = "donutCard";
     displayName = "Donuts (with legend)";
     displayNameKey = "Card_Donut";
-    slices: Slice[] = [this.donutHole, this.sliceBorderColor, this.sliceBorderWidth, this.areaDonut, this.areaDonutSize];
+    slices: Slice[] = [this.showDonuts, this.maxDonuts, this.donutHole, this.sliceBorderColor, this.sliceBorderWidth, this.areaDonut, this.areaDonutSize];
 
     onPreProcess(): void {
         this.areaDonutSize.visible = this.areaDonut.value;
@@ -290,11 +303,21 @@ export class SelectionCard extends Card {
     selBorderColor = new formattingSettings.ColorPicker({ name: "selBorderColor", ...t("Sel_BorderColor", "Selected outline"), value: { value: "#252423" } });
     selBorderWidth = new formattingSettings.NumUpDown({ name: "selBorderWidth", ...t("Sel_BorderWidth", "Outline width (px)"), value: 1.2, options: range(0, 8) });
     dimOpacity = new formattingSettings.NumUpDown({ name: "dimOpacity", ...t("Sel_DimOpacity", "Unselected opacity (%)"), value: 35, options: range(0, 100) });
+    showSearch = new formattingSettings.ToggleSwitch({
+        name: "showSearch", ...t("Sel_ShowSearch", "Search box"),
+        ...d("Sel_ShowSearch_Desc", "Search field on the map: contains, does not contain, starts with, ends with or equals; the matches are selected."),
+        value: true
+    });
+    searchScope = new formattingSettings.ItemDropdown({
+        name: "searchScope", ...t("Sel_SearchScope", "Search in"),
+        ...d("Sel_SearchScope_Desc", "Default field the search box looks in: everything, the country, the district / region or the municipality. It can be changed on the map."),
+        items: SEARCH_SCOPE_ITEMS, value: SEARCH_SCOPE_ITEMS[0]
+    });
 
     name = "selectionCard";
     displayName = "Selection";
     displayNameKey = "Card_Selection";
-    slices: Slice[] = [this.interaction, this.selBorderColor, this.selBorderWidth, this.dimOpacity];
+    slices: Slice[] = [this.interaction, this.showSearch, this.searchScope, this.selBorderColor, this.selBorderWidth, this.dimOpacity];
 }
 
 export class CategoryColorsCard extends Card {

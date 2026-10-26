@@ -6,13 +6,14 @@ const { presimplify, simplify, quantile } = require('topojson-simplify');
 const { quantize } = require('topojson-client');
 const allCities = require('all-the-cities');
 
-const SRC = process.argv[2] || '/root/geoDrillMap/src';
+const SRC = process.argv[2] || require('path').join(__dirname, '..', 'src');
+const DATA = process.env.GEO_DATA_DIR || require('path').join(__dirname, '..', 'data');
 const Q_COUNTRIES = 0.3, Q_ROADS = 0.15;
 
-const ne = JSON.parse(fs.readFileSync(__dirname + '/ne_10m_admin_0_countries.geojson'));
-const pp = JSON.parse(fs.readFileSync(__dirname + '/ppfull.geojson'));
-const roadsSrc = JSON.parse(fs.readFileSync(__dirname + '/ne_10m_roads.geojson'));
-const mu = JSON.parse(fs.readFileSync(__dirname + '/ne_10m_admin_0_map_units.geojson'));
+const ne = JSON.parse(fs.readFileSync(DATA + '/ne_10m_admin_0_countries.geojson'));
+const pp = JSON.parse(fs.readFileSync(DATA + '/ppfull.geojson'));
+const roadsSrc = JSON.parse(fs.readFileSync(DATA + '/ne_10m_roads.geojson'));
+const mu = JSON.parse(fs.readFileSync(DATA + '/ne_10m_admin_0_map_units.geojson'));
 const unitByGu = new Map(mu.features.map(f => [f.properties.GU_A3, f]));
 // Sovereign countries whose overseas parts become their own entries: parent keeps only its home units
 const HOME_UNITS = { FRA: ['FXX'], NLD: ['NLX'], NOR: ['NOW', 'NJM'] };

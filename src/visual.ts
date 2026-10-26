@@ -102,6 +102,8 @@ interface Model {
     involvedCountries: CountryInfo[];
     /** every data row (points may aggregate several rows into one municipality) */
     rows: DataPoint[];
+    /** rows + rows that could not be placed (selectable from the "not found" list) */
+    allRows: DataPoint[];
     /** ISO2 of the countries drawn with municipality polygons */
     muniCountries: string[];
     /** city level: rows shown aggregated by country, district or municipality */
@@ -109,6 +111,9 @@ interface Model {
     /** districts the city level is restricted to (drill into districts) */
     districtFocus: DistrictInfo[];
 }
+
+/** Countries whose municipality-level areas are counties / districts, not named after their towns. */
+const AREA_NAMES_NOT_CITIES = new Set(["US", "CN", "IN", "AU"]);
 
 /** Data rows behind a rendered item (a municipality aggregates several). */
 const rowsOf = (d: DataPoint): DataPoint[] => d.members || [d];
@@ -129,6 +134,8 @@ interface UnmatchedItem {
     label: string;
     value: number | null;
     format: string;
+    /** the data row (click in the list = select / filter it, so its values can be checked in the other visuals) */
+    row?: DataPoint;
 }
 
 /** Drill focus: the items that were selected at a level when the user drilled below it.
@@ -216,6 +223,18 @@ export class Visual implements IVisual {
     private focusChip: d3.Selection<HTMLDivElement, unknown, null, undefined>;
     private chipList: d3.Selection<HTMLDivElement, unknown, null, undefined> | null = null;
     private labelBtn: d3.Selection<HTMLButtonElement, unknown, null, undefined>;
+    private searchBox: d3.Selection<HTMLDivElement, unknown, null, undefined>;
+    private searchInput: d3.Selection<HTMLInputElement, unknown, null, undefined>;
+    private searchOp: d3.Selection<HTMLSelectElement, unknown, null, undefined>;
+    private searchScope: d3.Selection<HTMLSelectElement, unknown, null, undefined>;
+    private searchScopeTouched = false;
+    private searchCount: d3.Selection<HTMLSpanElement, unknown, null, undefined>;
+    private searchTimer: number | null = null;
+    /** the current selection was made by the search box (cleared again when the search is emptied) */
+    private searchApplied = false;
+    private donutBtn: d3.Selection<HTMLButtonElement, unknown, null, undefined>;
+    private donutsOverride: boolean | null = null;
+    private overrideAt = 0;
     private note: d3.Selection<HTMLDivElement, unknown, null, undefined>;
     /** cities read without the Country column although they come from several countries */
     private needCountryColumn = false;
@@ -253,6 +272,11 @@ export class Visual implements IVisual {
     private gMarks: d3.Selection<SVGGElement, unknown, null, undefined>;
     private gLabels: d3.Selection<SVGGElement, unknown, null, undefined>;
     private resetBtn: d3.Selection<HTMLButtonElement, unknown, null, undefined>;
+    private zoomInBtn: d3.Selection<HTMLButtonElement, unknown, null, undefined>;
+    private zoomOutBtn: d3.Selection<HTMLButtonElement, unknown, null, undefined>;
+    /** where an animated zoom is heading (geographic centre + absolute scale, or a reset): a re-render that
+     *  interrupts the animation (e.g. the filter echo from Power BI) jumps straight there instead of stopping half-way */
+    private zoomTarget: { c: [number, number]; s: number } | "reset" | null = null;
     private warning: d3.Selection<HTMLDivElement, unknown, null, undefined>;
     private unmatchedPanel: d3.Selection<HTMLDivElement, unknown, null, undefined>;
     private landing: d3.Selection<HTMLDivElement, unknown, null, undefined>;
@@ -313,7 +337,7 @@ export class Visual implements IVisual {
         this.resetBtn.append("span").text("⤢");
         this.resetBtn.on("click", (e: MouseEvent) => {
             e.stopPropagation();
-            this.svg.transition().duration(350).call(this.zoom.transform, d3.zoomIdentity);
+            this.animateZoom(d3.zoomIdentity, 350);
         });
 
         this.warning = mapWrap.append("div").classed("gdm-warning", true).attr("role", "button").attr("tabindex", 0);
@@ -327,8 +351,16 @@ export class Visual implements IVisual {
         this.warning.on("click", toggle).on("keydown", (e: KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") toggle(e); });
         this.unmatchedPanel.on("click", (e: MouseEvent) => e.stopPropagation()).on("wheel", (e: WheelEvent) => e.stopPropagation());
         this.focusChip = mapWrap.append("div").classed("gdm-focuschip", true).style("display", "none");
+        this.buildSearch(mapWrap);
         this.viewToggle = mapWrap.append("div").classed("gdm-viewtoggle", true).attr("role", "group").style("display", "none");
         const tools = mapWrap.append("div").classed("gdm-tools", true);
+        // zoom buttons for people without a mouse wheel / trackpad pinch
+        this.zoomInBtn = tools.append("button").classed("gdm-toolbtn gdm-zoombtn", true)
+            .attr("title", this.tr("Rt_ZoomIn", "Zoom in")).attr("aria-label", this.tr("Rt_ZoomIn", "Zoom in")).text("+");
+        this.zoomInBtn.on("click", (e: MouseEvent) => { e.stopPropagation(); this.zoomBy(1.6); });
+        this.zoomOutBtn = tools.append("button").classed("gdm-toolbtn gdm-zoombtn", true)
+            .attr("title", this.tr("Rt_ZoomOut", "Zoom out")).attr("aria-label", this.tr("Rt_ZoomOut", "Zoom out")).text("−");
+        this.zoomOutBtn.on("click", (e: MouseEvent) => { e.stopPropagation(); this.zoomBy(1 / 1.6); });
         this.drawBtn = tools.append("button").classed("gdm-toolbtn", true)
             .attr("title", this.tr("Rt_DrawZone_Tip", "Draw a selection zone (drag to draw; each zone adds to the selection; Esc cancels)"))
             .attr("aria-label", this.tr("Rt_DrawZone", "Draw selection zone")).text("✎");
@@ -341,11 +373,25 @@ export class Visual implements IVisual {
             e.stopPropagation();
             if (!this.formattingSettings) return;
             const next = !this.formattingSettings.labelsCard.show.value;
-            this.labelsOverride = next;
+            this.labelsOverride = next; this.overrideAt = Date.now();
             this.host.persistProperties({ merge: [{ objectName: "labelsCard", selector: undefined as any, properties: { show: next } }] });
             this.formattingSettings.labelsCard.show.value = next;
             this.labelBtn.classed("gdm-active", next).attr("aria-pressed", String(next));
             this.renderLabels();
+        });
+        // donuts of the Detail (legend) field on / off from the map
+        this.donutBtn = tools.append("button").classed("gdm-toolbtn gdm-donutbtn", true).style("display", "none")
+            .attr("title", this.tr("Rt_Donuts_Tip", "Show / hide donuts (Detail)"))
+            .attr("aria-label", this.tr("Rt_Donuts_Tip", "Show / hide donuts (Detail)"));
+        this.donutBtn.append("span").classed("gdm-donut-icon", true);
+        this.donutBtn.on("click", (e: MouseEvent) => {
+            e.stopPropagation();
+            if (!this.formattingSettings) return;
+            const next = !this.formattingSettings.donutCard.showDonuts.value;
+            this.donutsOverride = next; this.overrideAt = Date.now();
+            this.host.persistProperties({ merge: [{ objectName: "donutCard", selector: undefined as any, properties: { showDonuts: next } }] });
+            this.formattingSettings.donutCard.showDonuts.value = next;
+            this.rerender();
         });
         this.clearZoneBtn = tools.append("button").classed("gdm-toolbtn", true).style("display", "none")
             .attr("title", this.tr("Rt_ClearZones", "Clear drawn zones")).attr("aria-label", this.tr("Rt_ClearZones", "Clear drawn zones")).text("⌫");
@@ -365,6 +411,7 @@ export class Visual implements IVisual {
         this.zoom = d3.zoom<SVGSVGElement, unknown>()
             .scaleExtent([1, 60])
             .on("zoom", (e: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
+                if (e.sourceEvent) this.zoomTarget = null;
                 this.transform = e.transform;
                 this.gMap.attr("transform", e.transform.toString());
                 this.positionMarks();
@@ -405,8 +452,11 @@ export class Visual implements IVisual {
             const dataView: DataView | undefined = options.dataViews?.[0];
             this.formattingSettings = this.formattingSettingsService.populateFormattingSettingsModel(VisualFormattingSettingsModel, dataView);
             const ls = this.formattingSettings.labelsCard.show;
-            if (this.labelsOverride !== null) { if (ls.value === this.labelsOverride) this.labelsOverride = null; else ls.value = this.labelsOverride; }
+            // an in-visual toggle wins until Power BI echoes it back (or for 3 s), never longer
+            if (this.labelsOverride !== null) { if (ls.value === this.labelsOverride || (fromHost && Date.now() - this.overrideAt > 3000)) this.labelsOverride = null; else ls.value = this.labelsOverride; }
             this.labelBtn?.classed("gdm-active", ls.value).attr("aria-pressed", String(ls.value));
+            const ds = this.formattingSettings.donutCard.showDonuts;
+            if (this.donutsOverride !== null) { if (ds.value === this.donutsOverride || (fromHost && Date.now() - this.overrideAt > 3000)) this.donutsOverride = null; else ds.value = this.donutsOverride; }
 
             if (fromHost) this.readDrillState(dataView);
             let model: Model | null = null;
@@ -425,6 +475,8 @@ export class Visual implements IVisual {
             // Power BI header warning icon: missing Country column, or locations that could not be placed
             if (model && this.needCountryColumn) this.host.displayWarningIcon(this.tr("Rt_WarnCountryTitle", "Country column missing"), this.tr("Rt_NeedCountryCol", "Put the country column in “Country”."));
             else if (model && model.unmatched.length) this.host.displayWarningIcon(this.tr("Rt_WarnUnmatchedTitle", "Locations not found"), this.tr("Rt_NotFoundN", "{0} locations not found", model.unmatched.length));
+            this.donutBtn.style("display", model && model.hasLegend && model.legendItems.length ? null : "none")
+                .classed("gdm-active", !!model && this.donutsOn(model)).attr("aria-pressed", String(!!model && this.donutsOn(model)));
             this.note.style("display", this.needCountryColumn && model ? null : "none")
                 .text(this.tr("Rt_NeedCountryCol", "⚠ Put the country column in “Country (column)”: without it, cities with the same name in different countries are summed and filtered together."));
             this.host.eventService?.renderingFinished(options);
@@ -567,7 +619,8 @@ export class Visual implements IVisual {
         const miss = (dp: DataPoint, rowCountry?: CountryInfo) => (inFocus(rowCountry) === false) ? 0 : unmatched.push({
             label: dp.label,
             value: dp.colorValue !== null ? dp.colorValue : dp.sizeValue,
-            format: dp.colorValue !== null ? dp.colorFormat : dp.sizeFormat
+            format: dp.colorValue !== null ? dp.colorFormat : dp.sizeFormat,
+            row: dp
         });
         const pendingCityNames: { dp: DataPoint; name: string; postal: string | null }[] = [];
         const defIso2 = (this.formattingSettings.mapCard.defaultCountry.value || "").trim().toUpperCase();
@@ -688,6 +741,10 @@ export class Visual implements IVisual {
                     continue;
                 }
                 const parentCountry = parentCountryCol ? geo.findCountry(parentCountryCol.values[i]) : undefined;
+                // a Country value that is filled in but not recognized (misspelled, unknown code): never guess the
+                // country from the city name or the postal code ("Madrid" + "Spian" is not Madrid, Iowa) — not located
+                const pcv = parentCountryCol ? parentCountryCol.values[i] : null;
+                if (!parentCountry && pcv !== null && pcv !== undefined && normalize(String(pcv))) { miss(dp); continue; }
                 if (parentCountry && inFocus(parentCountry) === false) continue;
                 let knownCountry = parentCountry || (focusCountries.length === 1 ? focusCountries[0] : undefined)
                     || defaultCountry || (guessed ? geo.countryByIso2Code(guessed) : undefined);
@@ -721,9 +778,16 @@ export class Visual implements IVisual {
                 const byArea = () => {
                     if (!knownCountry || !geo.hasMunicipalities(knownCountry.iso2)) return false;
                     const pp = postal ? geo.findPostal(knownCountry.iso2, postal, true) : undefined;
+                    // counties / districts (US, CN, IN, AU) are not named after their cities: no name matching there
+                    if (AREA_NAMES_NOT_CITIES.has(knownCountry.iso2)) return false;
                     const areas = geo.findAreasByName(knownCountry.iso2, name, pp);
                     if (!areas.length) return false;
                     const a = areas[0];
+                    // a big town of that name elsewhere wins over a small homonymous municipality
+                    if (!pp) {
+                        const c = geo.findCityIn(knownCountry.iso2, name);
+                        if (c && c.popK >= 50 && geo.findArea(knownCountry.iso2, [c.lon, c.lat]) !== a) return false;
+                    }
                     if (pp && d3.geoDistance(a.label, pp) * 6371 > 40 && geo.findArea(knownCountry.iso2, pp) !== a) return false;
                     dp.point = pp && geo.findArea(knownCountry.iso2, pp) === a ? pp : a.label;
                     if (pp) dp.postalUsed = postal!;
@@ -877,7 +941,7 @@ export class Visual implements IVisual {
                     k = "c:" + p.country.iso3; kind = "c"; key = p.country;
                 } else if (p.countryOnly) {
                     // not placed below the country: listed as not found in the district / municipality views
-                    unmatched.push({ label: p.label, value: p.colorValue !== null ? p.colorValue : p.sizeValue, format: p.colorValue !== null ? p.colorFormat : p.sizeFormat });
+                    unmatched.push({ label: p.label, value: p.colorValue !== null ? p.colorValue : p.sizeValue, format: p.colorValue !== null ? p.colorFormat : p.sizeFormat, row: p });
                     continue;
                 } else if (v === "district") {
                     if (!m) { rest.push(p); continue; }
@@ -902,8 +966,11 @@ export class Visual implements IVisual {
         const cvals: number[] = [];
         rendered.forEach(p => { if (p.colorValue !== null) cvals.push(p.colorValue); });
 
+        const rowSet = new Set(rows);
+        const allRows = rows.concat(unmatched.map(u => u.row).filter((r): r is DataPoint => !!r && !rowSet.has(r)));
         return {
             rows,
+            allRows,
             view,
             districtFocus,
             muniCountries: [...muniCountries],
@@ -937,6 +1004,11 @@ export class Visual implements IVisual {
         dp.country = c;
         dp.countryAgg = true;
         return dp;
+    }
+
+    /** Donuts (Detail / legend field) on: a legend is bound and the user did not switch them off on the map. */
+    private donutsOn(model: Model): boolean {
+        return model.hasLegend && model.legendItems.length > 0 && this.formattingSettings.donutCard.showDonuts.value;
     }
 
     private countryName(c: CountryInfo): string {
@@ -1019,6 +1091,9 @@ export class Visual implements IVisual {
     // -----------------------------------------------------------------------------------------
 
     private render(viewport: powerbi.IViewport, model: Model | null): void {
+        // current view (projection + zoom) before re-fitting: kept when only the data changes
+        const prevView = this.projection && (this.transform.k !== 1 || this.transform.x !== 0 || this.transform.y !== 0)
+            ? { proj: this.projection, t: this.transform, w: this.mapW, h: this.mapH } : null;
         const s = this.formattingSettings;
         const hc = this.host.colorPalette.isHighContrast;
         const geo = this.geo!;
@@ -1048,7 +1123,7 @@ export class Visual implements IVisual {
                 .attr("stroke", hc ? this.host.colorPalette.foreground.value : "#FFFFFF").attr("stroke-width", 0.6);
             this.landing.style("display", null);
             this.landing.selectAll("*").remove();
-            this.landing.append("div").classed("gdm-landing-title", true).text("GeoCascade Map – Europe");
+            this.landing.append("div").classed("gdm-landing-title", true).text("World District Shape Map");
             this.landing.append("div").text(this.tr("Rt_Landing1", "Add the City column to “City”, the Country column to “Country” and a measure to “Value (color)”."));
             this.landing.append("div").text(this.tr("Rt_Landing2", "Optional: “Size”, “Detail (legend)”, “Postal code”, Latitude/Longitude and Tooltips."));
             return;
@@ -1127,12 +1202,34 @@ export class Visual implements IVisual {
             { type: "FeatureCollection", features: fitFeatures } as any);
         const path = d3.geoPath(this.projection);
 
-        // reset zoom when the drill level / data set changes
-        const key = `${level}|${model.points.length}|${model.points.slice(0, 50).map(p => p.label).join(",")}|${this.mapW}x${this.mapH}`;
+        // the zoom resets only when the level, the view (countries / districts / municipalities) or the drill focus changes;
+        // filtering, selecting, resizing or new data keep the place the user zoomed to
+        const key = `${level}|${model.view || ""}|${JSON.stringify(this.activeFocus().map(f => f.keys))}`;
         if (key !== this.fitKey) {
             this.fitKey = key;
+            this.zoomTarget = null;
             this.transform = d3.zoomIdentity;
             this.svg.call(this.zoom.transform as any, d3.zoomIdentity);
+        } else if (this.zoomTarget) {
+            const zt = this.zoomTarget;
+            this.zoomTarget = null;
+            let t = d3.zoomIdentity;
+            if (zt !== "reset") {
+                const k = Math.max(1, Math.min(60, zt.s / this.projection.scale()));
+                const pc = this.projection(zt.c);
+                if (pc) t = d3.zoomIdentity.translate(this.mapW / 2 - k * pc[0], this.mapH / 2 - k * pc[1]).scale(k);
+            }
+            this.transform = t;
+            this.svg.call(this.zoom.transform as any, t);
+        } else if (prevView && prevView.proj.invert) {
+            const c = prevView.proj.invert(prevView.t.invert([prevView.w / 2, prevView.h / 2]));
+            const k = prevView.proj.scale() * prevView.t.k / this.projection.scale();
+            const pc = c ? this.projection(c) : null;
+            if (pc && isFinite(k) && k >= 1 && k <= 60) {
+                const t = d3.zoomIdentity.translate(this.mapW / 2 - k * pc[0], this.mapH / 2 - k * pc[1]).scale(k);
+                this.transform = t;
+                this.svg.call(this.zoom.transform as any, t);
+            }
         }
         if (s.mapCard.enableZoom.value && this.interactive && !this.drawing) {
             this.zoom.extent([[0, 0], [this.mapW, this.mapH]]).translateExtent([[-this.mapW, -this.mapH], [2 * this.mapW, 2 * this.mapH]]);
@@ -1244,17 +1341,28 @@ export class Visual implements IVisual {
         const sizeMax = sizeVals.length ? safeMax(sizeVals) : 0;
         const rScale = d3.scaleSqrt().domain([0, sizeMax || 1]).range([minR, maxR]).clamp(true);
         const sizeMeasured = model.hasSize || model.hasColor;
-        const areaDonuts = drawAreas && !drawBubbles && model.hasLegend && s.donutCard.areaDonut.value;
-        const muniDonuts = drawMuni && aggMode === "area" && model.hasLegend && s.donutCard.areaDonut.value;
+        const useDonuts = this.donutsOn(model);
+        const areaDonuts = drawAreas && !drawBubbles && useDonuts && s.donutCard.areaDonut.value;
+        const muniDonuts = drawMuni && aggMode === "area" && useDonuts && s.donutCard.areaDonut.value;
         const aggregated = (p: DataPoint) => !!(p.muni || (p.district && p.members) || p.countryAgg);
         const isDonutOnly = (p: DataPoint) => areaDonuts || (muniDonuts && aggregated(p));
-        const bubbleData = (drawBubbles || areaDonuts) ? model.points.filter(p => p.point &&
+        let bubbleData = (drawBubbles || areaDonuts) ? model.points.filter(p => p.point &&
             (!drawMuni || !aggregated(p) || aggMode === "both" || muniDonuts)) : [];
         bubbleData.forEach(dp => {
             const v = model.hasSize ? dp.sizeValue : dp.colorValue;
             dp.radius = isDonutOnly(dp) ? s.donutCard.areaDonutSize.value : (sizeMeasured && v !== null ? rScale(Math.abs(v)) : (minR + maxR) / 2);
             dp.fill = bubbleColorFor(dp);
         });
+        // only the largest locations get a donut (readability at district / municipality level)
+        const donutSet = new Set<DataPoint>();
+        if (useDonuts) {
+            const maxD = s.donutCard.maxDonuts.value;
+            const val = (p: DataPoint) => Math.abs((model.hasSize ? p.sizeValue : p.colorValue) ?? 0);
+            const cands = bubbleData.filter(p => p.slices.length).sort((a, b) => val(b) - val(a));
+            (maxD > 0 ? cands.slice(0, maxD) : cands).forEach(p => donutSet.add(p));
+        }
+        // a donut-only mark (area donut) that is not among the largest is not drawn at all; its area keeps the color
+        bubbleData = bubbleData.filter(p => !isDonutOnly(p) || donutSet.has(p));
         bubbleData.sort((a, b) => (b.radius || 0) - (a.radius || 0)); // small on top
         this.bubbleSet = new Set(bubbleData);
 
@@ -1271,7 +1379,7 @@ export class Visual implements IVisual {
         marks.each((dp, idx, nodes) => {
             const g = d3.select(nodes[idx]);
             g.selectAll("*").remove();
-            if (model.hasLegend && dp.slices.length) {
+            if (donutSet.has(dp)) {
                 const arc = d3.arc<d3.PieArcDatum<SliceDatum>>().innerRadius(dp.radius! * hole).outerRadius(dp.radius!);
                 const sl = g.selectAll<SVGPathElement, d3.PieArcDatum<SliceDatum>>("path").data(pie(dp.slices)).join("path")
                     .classed("gdm-slice gdm-mark", true)
@@ -1281,6 +1389,13 @@ export class Visual implements IVisual {
                     .attr("stroke", sliceStroke).attr("stroke-width", sliceStrokeW)
                     .attr("tabindex", 0).attr("role", "button").attr("aria-label", d => `${dp.label} ${d.data.name}`);
                 this.bindSliceInteractions(sl);
+                // the bubble outline (Bubbles › Outline) also surrounds donuts; slice separators keep their own setting
+                if (bStrokeW > 0) {
+                    g.append("circle").datum(dp).classed("gdm-donut-outline", true).attr("r", dp.radius!)
+                        .attr("fill", "none").attr("stroke", bStroke).attr("stroke-width", bStrokeW).attr("pointer-events", "none");
+                    if (hole > 0) g.append("circle").datum(dp).classed("gdm-donut-outline gdm-donut-inner", true).attr("r", dp.radius! * hole)
+                        .attr("fill", "none").attr("stroke", bStroke).attr("stroke-width", bStrokeW).attr("pointer-events", "none");
+                }
             } else {
                 const c = g.append("circle").datum(dp)
                     .classed("gdm-circle gdm-mark", true)
@@ -1332,12 +1447,41 @@ export class Visual implements IVisual {
         head.append("span").text((items.length === 1 ? this.tr("Rt_NotFound1", "1 location not found") : this.tr("Rt_NotFoundN", "{0} locations not found", items.length)) + (hasVals ? " — " + formatExact(total, fmt, this.locale) : ""));
         head.append("button").attr("aria-label", this.tr("Rt_Close", "Close")).text("✕").on("click", (e: MouseEvent) => { e.stopPropagation(); panel.style("display", "none"); });
         panel.append("div").classed("gdm-unmatched-tip", true)
-            .text(this.tr("Rt_NotFoundTip", "Tip: add the Country and Postal code helper measures (or Latitude/Longitude), or set the Default country in Map."));
+            .text(this.tr("Rt_NotFoundTip", "Tip: click a location to see it in the other visuals; add the Country column and a Postal code measure, or set the Default country in Map."));
         const table = panel.append("div").classed("gdm-unmatched-list", true);
         const rows = table.selectAll("div.gdm-unmatched-row").data(sorted.slice(0, 500)).join("div").classed("gdm-unmatched-row", true);
-        rows.append("span").classed("gdm-um-name", true).text(d => d.label);
+        // the country value of the row helps to spot a misspelled country ("Roma · Itly")
+        const umName = (d: UnmatchedItem) => {
+            const g = d.row?.groupRaw;
+            return g !== undefined && g !== null && String(g) && !d.label.includes(String(g)) ? `${d.label} · ${g}` : d.label;
+        };
+        rows.append("span").classed("gdm-um-name", true).text(umName).attr("title", umName);
         rows.append("span").classed("gdm-um-val", true).text(d => d.value === null ? "" : formatExact(d.value, d.format || fmt, this.locale));
+        // click = select / filter that row on the page (Ctrl/Shift adds): the other visuals show what is behind it
+        if (this.interactive) {
+            const selectable = sorted.filter(u => !!u.row);
+            rows.filter(d => !!d.row).classed("gdm-um-click", true).attr("tabindex", 0).attr("role", "button")
+                .attr("title", this.tr("Rt_NotFoundClick", "Click to select it in the other visuals (Ctrl+click adds)"))
+                .on("click", (e: MouseEvent, d) => { e.stopPropagation(); this.selectUnmatched([d.row!], e.ctrlKey || e.metaKey || e.shiftKey); })
+                .on("keydown", (e: KeyboardEvent, d) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); this.selectUnmatched([d.row!], e.ctrlKey || e.shiftKey); } });
+            if (selectable.length > 1) head.insert("button", "button").classed("gdm-um-all", true)
+                .attr("title", this.tr("Rt_NotFoundSelectAll", "Select all")).text(this.tr("Rt_NotFoundSelectAll", "Select all"))
+                .on("click", (e: MouseEvent) => { e.stopPropagation(); this.selectUnmatched(selectable.map(u => u.row!), false); });
+            this.markUnmatchedSelection();
+        }
         if (sorted.length > 500) table.append("div").classed("gdm-unmatched-row", true).text(this.tr("Rt_AndMore", "… and {0} more", sorted.length - 500));
+    }
+
+    /** Selects (filter mode: filters) rows from the "not found" list. */
+    private selectUnmatched(rows: DataPoint[], multi: boolean): void {
+        if (!this.interactive || !rows.length) return;
+        if (this.filterMode) this.toggleFilter(rows.map(r => r.label), multi);
+        else this.selectIds(rows.map(r => r.selectionId), multi);
+    }
+
+    private markUnmatchedSelection(): void {
+        const sel = new Set(this.currentSelection());
+        this.unmatchedPanel.selectAll<HTMLDivElement, UnmatchedItem>("div.gdm-um-click").classed("gdm-um-sel", d => !!d.row && sel.has(d.row));
     }
 
     /**
@@ -1655,6 +1799,53 @@ export class Visual implements IVisual {
         const show = !!s && s.mapCard.enableZoom.value && s.mapCard.showReset.value &&
             (this.transform.k !== 1 || this.transform.x !== 0 || this.transform.y !== 0);
         this.resetBtn.style("display", show ? null : "none");
+        const zoomOn = !!s && s.mapCard.enableZoom.value && this.interactive;
+        this.zoomInBtn.style("display", zoomOn ? null : "none").property("disabled", this.transform.k >= 59.9);
+        this.zoomOutBtn.style("display", zoomOn ? null : "none").property("disabled", this.transform.k <= 1.001);
+    }
+
+    private zoomBy(f: number): void {
+        if (!this.formattingSettings?.mapCard.enableZoom.value) return;
+        const cur = this.transform;
+        const k = Math.max(1, Math.min(60, cur.k * f));
+        const c = cur.invert([this.mapW / 2, this.mapH / 2]);
+        this.animateZoom(d3.zoomIdentity.translate(this.mapW / 2 - k * c[0], this.mapH / 2 - k * c[1]).scale(k), 250);
+    }
+
+    /** Animated zoom to t (in the current projection), remembered so an interrupting re-render can finish it. */
+    private animateZoom(t: d3.ZoomTransform, duration: number): void {
+        if (t.k <= 1.0001 && Math.abs(t.x) < 0.5 && Math.abs(t.y) < 0.5) this.zoomTarget = "reset";
+        else {
+            const c = this.projection.invert ? this.projection.invert(t.invert([this.mapW / 2, this.mapH / 2])) : null;
+            this.zoomTarget = c ? { c: c as [number, number], s: this.projection.scale() * t.k } : null;
+        }
+        this.svg.transition().duration(duration).call(this.zoom.transform as any, t)
+            .on("end", () => { this.zoomTarget = null; });
+    }
+
+    /** Zooms the map onto the marks that hold the given data rows (search results). */
+    private zoomToRows(rows: DataPoint[]): void {
+        const model = this.model;
+        if (!model || !this.projection || !this.formattingSettings?.mapCard.enableZoom.value) return;
+        const want = new Set(rows);
+        const feats: any[] = [];
+        for (const p of model.points) {
+            if (!rowsOf(p).some(r => want.has(r))) continue;
+            const f = p.muni ? p.muni.feature : p.district ? p.district.feature : p.continent ? p.continent.feature
+                : p.countryAgg && p.country ? p.country.fitFeature : null;
+            if (f) feats.push(f);
+            else if (p.point) feats.push(d3.geoCircle().center(p.point).radius(0.05)());
+            else if (p.country) feats.push(p.country.fitFeature);
+        }
+        if (!feats.length) return;
+        const path = d3.geoPath(this.projection);
+        const [[x0, y0], [x1, y1]] = path.bounds({ type: "FeatureCollection", features: feats } as any);
+        if (![x0, y0, x1, y1].every(isFinite)) return;
+        // the found area fills about two thirds of the map, so its surroundings stay visible
+        const w = Math.max(1, x1 - x0), h = Math.max(1, y1 - y0);
+        const k = Math.max(1, Math.min(40, 0.66 * this.mapW / w, 0.66 * this.mapH / h));
+        const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+        this.animateZoom(d3.zoomIdentity.translate(this.mapW / 2 - k * cx, this.mapH / 2 - k * cy).scale(k), 450);
     }
 
     // -----------------------------------------------------------------------------------------
@@ -1668,16 +1859,17 @@ export class Visual implements IVisual {
         const other = top ? this.legendBottom : this.legendTop;
         other.style("display", "none").selectAll("*").remove();
         target.selectAll("*").remove();
-        const showGradient = !model.hasLegend && model.hasColor && !this.host.colorPalette.isHighContrast;
-        if (!s.show.value || (!model.hasLegend && !showGradient)) { target.style("display", "none"); return; }
+        const legendOn = this.donutsOn(model);
+        const showGradient = !legendOn && model.hasColor && !this.host.colorPalette.isHighContrast;
+        if (!s.show.value || (!legendOn && !showGradient)) { target.style("display", "none"); return; }
         target.style("display", null)
             .style("font-size", `${s.fontSize.value}px`)
             .style("color", s.fontColor.value.value)
             .style("max-width", `${viewport.width}px`);
 
-        if (s.showTitle.value) target.append("span").classed("gdm-legend-title", true).text(model.hasLegend ? model.legendTitle : model.colorName);
+        if (s.showTitle.value) target.append("span").classed("gdm-legend-title", true).text(legendOn ? model.legendTitle : model.colorName);
 
-        if (model.hasLegend) {
+        if (legendOn) {
             model.legendItems.forEach(li => {
                 const item = target.append("span").classed("gdm-legend-item", true).attr("tabindex", 0).attr("role", "button");
                 item.append("span").classed("gdm-swatch", true).style("background", li.color);
@@ -1838,7 +2030,7 @@ export class Visual implements IVisual {
     private currentSelection(): DataPoint[] {
         const model = this.model;
         if (!model) return [];
-        if (this.filterMode) return model.rows.filter(p => this.filterLabels.has(p.label));
+        if (this.filterMode) return model.allRows.filter(p => this.filterLabels.has(p.label));
         return this.selectedPoints();
     }
 
@@ -1884,7 +2076,7 @@ export class Visual implements IVisual {
         if (!this.model) return filters;
         if (this.filterMode) {
             // one filter set for the location: the selection (always inside the focus) replaces the focus of the same columns
-            const sel = this.filterLabels.size ? this.model.rows.filter(p => this.filterLabels.has(p.label)) : [];
+            const sel = this.filterLabels.size ? this.model.allRows.filter(p => this.filterLabels.has(p.label)) : [];
             const leafKey = this.leafTarget ? JSON.stringify(this.leafTarget) : "";
             let locFilters: any[] = [];
             for (const f of this.activeFocus()) {
@@ -1893,7 +2085,8 @@ export class Visual implements IVisual {
                 else filters.push(new BasicFilter(f.target, "In", f.values).toJSON());
             }
             if (sel.length) {
-                const countryLevel = this.model.level === "city" && this.model.view === "country";
+                // whole countries only when every selected row is placed in one (rows from the "not found" list filter exactly)
+                const countryLevel = this.model.level === "city" && this.model.view === "country" && sel.every(p => !!p.country && !p.countryOnly);
                 locFilters = this.locationFilters([...new Set(sel.map(p => (p.raw ?? p.label) as any))], this.groupValues(sel), this.tuplesOf(sel), countryLevel);
             }
             filters.push(...locFilters);
@@ -1982,11 +2175,11 @@ export class Visual implements IVisual {
             const order = (tupleF.target as any[]).map(t => tk(t));
             const gi = order.indexOf(gk), li = order.indexOf(lk);
             const set = new Set((tupleF.values || []).map((tp: any[]) => str(tp[gi]) + "\u0001" + str(tp[li])));
-            labels = model.rows.filter(p => set.has(String(p.groupRaw) + "\u0001" + String(p.raw ?? p.label))).map(p => p.label);
+            labels = model.allRows.filter(p => set.has(String(p.groupRaw) + "\u0001" + String(p.raw ?? p.label))).map(p => p.label);
         } else if (leafF || groupF) {
             const vals = leafF ? new Set((leafF.values || []).map((v: any) => String(v))) : null;
             const gvals = groupF ? new Set((groupF.values || []).map((v: any) => String(v))) : null;
-            labels = model.rows.filter(p => (!vals || vals.has(String(p.raw ?? p.label))) && (!gvals || gvals.has(String(p.groupRaw)))).map(p => p.label);
+            labels = model.allRows.filter(p => (!vals || vals.has(String(p.raw ?? p.label))) && (!gvals || gvals.has(String(p.groupRaw)))).map(p => p.label);
         } else if (this.lastFilterJson && this.lastFilterJson !== "[]" && jsonFilters.length === 0) {
             labels = []; // cleared from a synced slicer
         } else return;
@@ -2044,6 +2237,8 @@ export class Visual implements IVisual {
 
     /** Clear everything the user picked inside the visual (selection, filter, zones). */
     private clearAll(): void {
+        if (this.searchApplied && this.searchInput && String(this.searchInput.property("value") || "")) { this.searchInput.property("value", ""); this.searchCount.text(""); }
+        this.searchApplied = false;
         this.zones = [];
         this.renderZones();
         if (this.filterMode) this.setFilterLabels(new Set());
@@ -2055,7 +2250,7 @@ export class Visual implements IVisual {
         if (!model) return [];
         const selected = (this.selectionManager.getSelectionIds() as ISelectionId[]) || [];
         if (!selected.length) return [];
-        return model.rows.filter(d => selected.some(s => s.equals(d.selectionId)) || d.slices.some(sl => selected.some(s => s.equals(sl.selectionId))));
+        return model.allRows.filter(d => selected.some(s => s.equals(d.selectionId)) || d.slices.some(sl => selected.some(s => s.equals(sl.selectionId))));
     }
 
     // ---- zone (lasso) selection ---------------------------------------------------------------
@@ -2139,7 +2334,7 @@ export class Visual implements IVisual {
             if (polys.some(poly => d3.polygonContains(poly, xy))) for (const r of rowsOf(d)) ids.push(r.selectionId);
         }
         if (this.filterMode) {
-            const labels = model.rows.filter(d => ids.includes(d.selectionId)).map(d => d.label);
+            const labels = model.allRows.filter(d => ids.includes(d.selectionId)).map(d => d.label);
             this.setFilterLabels(new Set(labels));
         } else {
             const p = ids.length ? this.selectionManager.select(ids, false) : this.selectionManager.clear();
@@ -2149,6 +2344,7 @@ export class Visual implements IVisual {
     }
 
     private updateDrillUi(): void {
+        this.updateSearchUi();
         this.updateDrillUiInner();
         this.layoutTopBar();
     }
@@ -2222,13 +2418,137 @@ export class Visual implements IVisual {
 
     /** Chip and view buttons share the top edge: on a narrow visual the chip moves below the buttons. */
     private layoutTopBar(): void {
-        const chip = this.focusChip.node(), tg = this.viewToggle.node();
+        const chip = this.focusChip.node(), tg = this.viewToggle.node(), sb = this.searchBox?.node();
         if (!chip || !tg) return;
-        chip.style.top = "6px";
-        if (chip.style.display === "none" || tg.style.display === "none") return;
-        const a = chip.getBoundingClientRect(), b = tg.getBoundingClientRect();
         const wr = (chip.parentElement as HTMLElement).getBoundingClientRect();
-        if (a.right + 6 > b.left && a.left < b.right + 6) chip.style.top = `${b.bottom - wr.top + 6}px`;
+        const shown = (el: HTMLElement | null | undefined) => !!el && el.style.display !== "none";
+        const overlaps = (a: DOMRect, b: DOMRect) => a.right + 6 > b.left && a.left < b.right + 6 && a.bottom + 4 > b.top && a.top < b.bottom + 4;
+        // search box first (top-left), the chip below it; both move below the view buttons when they would overlap them
+        let top = 6;
+        if (shown(sb)) {
+            sb!.style.top = "6px";
+            if (shown(tg) && overlaps(sb!.getBoundingClientRect(), tg.getBoundingClientRect())) sb!.style.top = `${tg.getBoundingClientRect().bottom - wr.top + 6}px`;
+            top = sb!.getBoundingClientRect().bottom - wr.top + 6;
+        }
+        chip.style.top = `${top}px`;
+        if (!shown(chip) || !shown(tg)) return;
+        if (overlaps(chip.getBoundingClientRect(), tg.getBoundingClientRect())) chip.style.top = `${tg.getBoundingClientRect().bottom - wr.top + 6}px`;
+    }
+
+    // ---- search box ---------------------------------------------------------------------------
+
+    private buildSearch(parent: d3.Selection<HTMLDivElement, unknown, null, undefined>): void {
+        const box = this.searchBox = parent.append("div").classed("gdm-search", true).style("display", "none");
+        box.on("click", (e: MouseEvent) => e.stopPropagation()).on("dblclick", (e: MouseEvent) => e.stopPropagation())
+            .on("wheel", (e: WheelEvent) => e.stopPropagation()).on("pointerdown", (e: PointerEvent) => e.stopPropagation());
+        const scopes: [string, string, string][] = [
+            ["all", "Opt_Scope_All", "All"], ["country", "Opt_Scope_Country", "Country"],
+            ["district", "Opt_Scope_District", "District / region"], ["municipality", "Opt_Scope_Municipality", "Municipality"]
+        ];
+        this.searchScope = box.append("select").classed("gdm-search-scope", true).attr("aria-label", this.tr("Rt_Search_Scope", "Search in"))
+            .attr("title", this.tr("Rt_Search_Scope", "Search in"));
+        this.searchScope.selectAll("option").data(scopes).join("option").attr("value", d => d[0]).text(d => this.tr(d[1], d[2]));
+        const ops: [string, string, string][] = [
+            ["contains", "Rt_Search_Contains", "Contains"], ["notContains", "Rt_Search_NotContains", "Does not contain"],
+            ["startsWith", "Rt_Search_StartsWith", "Starts with"], ["endsWith", "Rt_Search_EndsWith", "Ends with"], ["equals", "Rt_Search_Equals", "Is"]
+        ];
+        this.searchOp = box.append("select").classed("gdm-search-op", true).attr("aria-label", this.tr("Rt_Search_Op", "Search operator"));
+        this.searchOp.selectAll("option").data(ops).join("option").attr("value", d => d[0]).text(d => this.tr(d[1], d[2]));
+        this.searchInput = box.append("input").classed("gdm-search-input", true).attr("type", "search")
+            .attr("placeholder", this.tr("Rt_Search_Placeholder", "Search… (Enter)")).attr("aria-label", this.tr("Rt_Search_Placeholder", "Search… (Enter)"));
+        this.searchCount = box.append("span").classed("gdm-search-count", true);
+        // typing only previews how many locations match; Enter applies the filter / selection
+        const preview = () => {
+            if (this.searchTimer !== null) window.clearTimeout(this.searchTimer);
+            this.searchTimer = window.setTimeout(() => { this.searchTimer = null; this.runSearch(false); }, 200);
+        };
+        this.searchInput.on("input", preview)
+            .on("search", () => { if (!String(this.searchInput.property("value") || "")) this.runSearch(true); }) // the ✕ of the search field
+            .on("keydown", (e: KeyboardEvent) => {
+                e.stopPropagation();
+                if (e.key === "Enter") { if (this.searchTimer !== null) window.clearTimeout(this.searchTimer); this.searchTimer = null; this.runSearch(true); }
+                if (e.key === "Escape") { (e.target as HTMLInputElement).value = ""; this.runSearch(true); }
+            });
+        this.searchOp.on("change", () => this.runSearch(false)).on("keydown", (e: KeyboardEvent) => { e.stopPropagation(); if (e.key === "Enter") this.runSearch(true); });
+        this.searchScope.on("change", () => { this.searchScopeTouched = true; this.runSearch(false); })
+            .on("keydown", (e: KeyboardEvent) => { e.stopPropagation(); if (e.key === "Enter") this.runSearch(true); });
+    }
+
+    private updateSearchUi(): void {
+        const sc = this.formattingSettings.selectionCard;
+        const on = !!this.model && this.interactive && sc.showSearch.value;
+        this.searchBox.style("display", on ? null : "none");
+        // the default scope comes from the format pane until the user picks one on the map
+        if (!this.searchScopeTouched) this.searchScope.property("value", String(sc.searchScope.value.value || "all"));
+    }
+
+    /** Names a data row can be found by, per search scope. */
+    private searchNames(r: DataPoint, scope: string): string[] {
+        const out: string[] = [];
+        const geo = this.geo;
+        if (scope === "all" || scope === "country") {
+            if (r.country) out.push(r.country.nameEN, r.country.namePT, r.country.iso2, r.country.iso3);
+            if (r.groupRaw !== undefined && r.groupRaw !== null) out.push(String(r.groupRaw));
+        }
+        if (scope === "all" || scope === "district") {
+            const m = r.muniRef;
+            const d = r.district || (m && geo ? geo.districtsOf(m.cc)[m.district] : undefined);
+            if (d) out.push(d.name, ...d.names);
+        }
+        if (scope === "all" || scope === "municipality") {
+            const m = r.muniRef;
+            if (m && m.kind === "m") out.push(m.name, ...m.aliases);
+        }
+        if (scope === "all") out.push(r.label);
+        return out.filter(n => !!n);
+    }
+
+    /** Finds the data locations whose country / district / municipality / name matches the search.
+     *  apply = false only previews the number of matches; apply = true (Enter) filters or selects them. */
+    private runSearch(apply: boolean): void {
+        const model = this.model;
+        if (!model || !this.interactive) return;
+        const term = this.searchKey(String(this.searchInput.property("value") || ""));
+        const op = String(this.searchOp.property("value") || "contains");
+        const scope = String(this.searchScope.property("value") || "all");
+        if (!term) {
+            this.searchCount.text("");
+            if (apply && this.searchApplied) {
+                this.searchApplied = false; this.clearAll();
+                if (this.formattingSettings?.mapCard.enableZoom.value) this.animateZoom(d3.zoomIdentity, 350);
+            }
+            return;
+        }
+        const hit = (k: string): boolean => {
+            switch (op) {
+                case "startsWith": return k.startsWith(term);
+                case "endsWith": return k.endsWith(term);
+                case "equals": return k === term;
+                default: return k.includes(term);
+            }
+        };
+        const rows = model.rows.filter(r => {
+            const keys = this.searchNames(r, scope).map(n => this.searchKey(n));
+            const any = keys.some(hit);
+            return op === "notContains" ? !any : any;
+        });
+        this.searchCount.text(String(rows.length)).classed("gdm-search-pending", !apply)
+            .attr("title", apply ? null : this.tr("Rt_Search_PressEnter", "Press Enter to filter"));
+        if (!apply) return;
+        this.searchApplied = true;
+        if (this.filterMode) this.setFilterLabels(new Set(rows.map(r => r.label)));
+        else {
+            const ids = rows.map(r => r.selectionId);
+            const p = ids.length ? this.selectionManager.select(ids, false) : this.selectionManager.clear();
+            p.then(() => { this.recordSelection(); this.applySelectionStyles(); this.updateDrillUi(); });
+        }
+        // the map follows the search: zoom onto what was found
+        this.zoomToRows(rows);
+    }
+
+    /** accent- and case-insensitive text for searching */
+    private searchKey(s: string): string {
+        return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
     }
 
     /** Countries ⇄ districts ⇄ municipalities at the city level.
@@ -2342,6 +2662,7 @@ export class Visual implements IVisual {
     private applySelectionStyles(): void {
         const model = this.model;
         if (!model) return;
+        this.markUnmatchedSelection();
         const fm = this.filterMode;
         const fset = this.filterLabels;
         const selected = fm ? [] : ((this.selectionManager.getSelectionIds() as ISelectionId[]) || []);
@@ -2378,6 +2699,10 @@ export class Visual implements IVisual {
             .attr("stroke", d => explicitlySel(d) && selW > 0 ? selColor : bStroke)
             .attr("stroke-width", d => explicitlySel(d) && selW > 0 ? selW : bStrokeW);
         this.gMarks.selectAll<SVGPathElement, d3.PieArcDatum<SliceDatum>>("path.gdm-slice").attr("fill-opacity", d => sliceActive(d.data) ? opacity : opacity * DIM_OPACITY);
+        this.gMarks.selectAll<SVGCircleElement, DataPoint>("circle.gdm-donut-outline")
+            .attr("stroke", d => explicitlySel(d) && selW > 0 ? selColor : bStroke)
+            .attr("stroke-width", d => explicitlySel(d) && selW > 0 ? selW : bStrokeW)
+            .attr("stroke-opacity", d => dpActive(d) ? 1 : DIM_OPACITY);
         const legendSel = model.legendItems.map(li => !hasSel || isSel(li.selectionId) || model.rows.some(p => p.slices.some(sl => sl.name === li.name && isSel(sl.selectionId))));
         const legendActive = hasSel && legendSel.some(x => x) ? legendSel : model.legendItems.map(() => true);
         [this.legendTop, this.legendBottom].forEach(l => l.selectAll<HTMLSpanElement, unknown>(".gdm-legend-item").style("opacity", (_d, i) => legendActive[i] ? 1 : DIM_OPACITY));

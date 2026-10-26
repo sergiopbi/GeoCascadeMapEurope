@@ -1,61 +1,103 @@
-# GeoCascade Map – Europe
+# World District Shape Map (worldDistrictShapeMap)
 
-Power BI custom visual: an offline vector map that turns a list of **cities** into **countries › districts / regions › municipalities**.
+A Power BI custom visual: an offline shape map that turns a plain list of **cities** into
+**countries › districts / regions › municipalities**, placing every city inside its own
+country — no geocoding service, no Bing, no API key, no web access.
 
-- **Three views**, switched with the buttons on the map: *Countries*, *Districts / regions* (first-level divisions of every country)
-  and *Municipalities* (Europe). Municipalities are offered for one selected country, for selected districts, or when the data has a single country.
-- Every city row is placed **inside its own country** (Country column): official municipality name first, then postal code, then city name,
-  then latitude/longitude. Cities with the same name in different countries (Madrid ES / Madrid CO) stay separate.
-- Small European municipalities are grouped around their main town into areas of comparable size (see *Data*); the tooltip lists the
-  locations in the data and how many municipalities an area groups.
-- Selection **filters the page** like a slicer (or highlights): click, Shift/Ctrl+click or **drawn zones**. With the Country column the
-  filter is exact (country column, or country + city pairs).
-- Areas without data show their name on hover. Unmatched locations are listed with their values.
-- Choropleth areas, bubbles and donuts; 2–4 colour gradients; linear, logarithmic, rank, quantile-class or percentile-clipped scales;
-  negative values with their own colour or a diverging ramp.
-- Built-in basemap (ocean, land, main roads, place names per area). **No external services, no web access.**
-- Tooltips, context menu, keyboard navigation, high contrast, landing page, sync slicers, localized (en-US, pt-PT).
+## What it does
+
+- Three views, switched with the buttons on the map: *Countries*, *Districts / regions*
+  (first-level divisions of every country) and *Municipalities* (Europe, USA counties,
+  Brazil, Mexico, Colombia, Argentina, China, India, Japan, South Korea, Turkey,
+  Australia). Municipalities are offered for one selected country, for selected
+  districts, or when the data has a single country.
+- Every city row is placed **inside its own country** (Country column): official
+  municipality name first, then postal code, then city name, then latitude/longitude.
+  Cities with the same name in different countries (Madrid ES / Madrid CO) stay
+  separate. A Country value that is filled in but not recognised (misspelled, unknown
+  code) is never guessed from the city name: the row goes to the "not found" list.
+- **Not found list**: rows that cannot be placed are listed with their values; a click
+  (Ctrl+click adds, or *Select all*) filters / highlights them in the other visuals, so
+  the data behind them can be checked and fixed.
+- Selection **filters the page** like a slicer (or highlights): click, Shift/Ctrl+click
+  or **drawn zones**. With the Country column the filter is exact (country column, or
+  country + city pairs).
+- **Search box**: scope (All / Country / District / Municipality) and operator
+  (contains, does not contain, starts with, ends with, is). Typing previews the number
+  of matches; **Enter** filters the page and zooms the map to the result.
+- Choropleth areas, bubbles or both; donuts for a Detail (legend) field, limited to the
+  largest locations and switchable from the map; data labels switchable from the map.
+- Colour scales: 2–4 colour gradients; linear, logarithmic, rank, quantile classes or
+  percentile-clipped; negative values with their own colour or a diverging ramp.
+  Numbers follow the measure's format string.
+- Zoom with the wheel, pinch or the **+ / −** buttons; the view is kept when the data
+  changes and reset (⤢) on demand.
+- Built-in basemap (ocean, land, main roads, place names per area). Areas without data
+  still show their name on hover.
+- Tooltips, context menu, keyboard navigation, high contrast, landing page, sync
+  slicers, warning icon. Localized: English (default), Português (PT/BR), Español,
+  Français, Deutsch, Italiano.
 
 ## Data roles
 
-| Role | Kind | Purpose |
-|---|---|---|
-| City | Grouping | City of each row; optionally a second level below it (postal code, or customer/store with Latitude/Longitude) |
-| Country | Grouping | Country column of the same table (name / ISO2 / ISO3). Strongly recommended: without it Power BI sums same-named cities of different countries |
-| Value (color) | Measure | Colour scale |
-| Size | Measure | Bubble size |
-| Detail (legend) | Grouping | Donut slices |
-| Postal code | Measure | Placement of each city (e.g. `SELECTEDVALUE(Dim[PostalCode])` or the most frequent one) |
-| Latitude / Longitude | Measure | Placement for the level below the city; fallback for cities |
-| Tooltips | Measure | Extra tooltip values |
+| Role | Kind | Required | Purpose |
+|---|---|---|---|
+| City | Grouping | Yes | City of each row; optionally a second level below it (postal code, or customer/store with Latitude/Longitude). |
+| Country | Grouping | Recommended | Country column of the same table (name / ISO2 / ISO3). Without it Power BI sums same-named cities of different countries. |
+| Value (color) | Measure | Yes | Colour scale of areas and bubbles. |
+| Size | Measure | No | Bubble size (Value is used when empty). |
+| Detail (legend) | Grouping | No | Donut slices. |
+| Postal code | Measure | No | Placement of each city, e.g. `SELECTEDVALUE(Dim[PostalCode])` or the most frequent one. |
+| Latitude / Longitude | Measure | No | Placement for the level below the city; fallback for cities. |
+| Tooltips | Measure | No | Extra tooltip values. |
+
+## Architecture notes (for future maintainers)
+
+- **Geography is bundled, not fetched.** `src/geodata.ts`, `roads.ts`, `cities.ts`,
+  `postal.ts` and `municipalities.ts` are generated by the scripts in `tools/` (see
+  *Build*). `municipalities.ts` uses a compact varint arc encoding and is decoded lazily,
+  one country at a time, on first use.
+- **Correctness first.** The Country column decides the country; a location is matched
+  only inside it (municipality name, postal code, GeoNames name, lat/lon, in that order).
+  Unrecognised country values and unmatched locations are listed, never moved to
+  another country. US/CN/IN/AU counties are not name-matched (they are not named after
+  their cities).
+- **Filtering** uses `host.applyJsonFilter` with Basic or Tuple filters (country +
+  city), with echo protection so a stale host update never re-applies a cleared filter.
+- **In-visual toggles** (labels, donuts, view, drill focus) are persisted with
+  `host.persistProperties`; a local override wins until Power BI echoes it back (max 3 s).
+- **Zoom** is only reset when the level, view or drill focus changes; animated zooms
+  (search, + / −, reset) finish even when a host update interrupts them.
 
 ## Build
 
 ```bash
 npm install
 npm run eslint
-npx pbiviz package
+npm run package
 ```
 
-The geographic modules in `src/` are generated:
+The geographic modules in `src/` are generated from raw source data that is not stored
+in the repository (`GEO_DATA_DIR`, default `./data`):
 
 | Module | Script | Content |
 |---|---|---|
-| `geodata.ts`, `roads.ts`, `cities.ts` | `scripts_buildgeo.js` | countries, roads, places, cities |
-| `postal.ts` | `scripts_fixpostal.js` + `scripts_buildpostal.py` | postal-code centroids (coordinates outside their own municipality are moved into it) |
-| `municipalities.ts` | `scripts_buildeuro.js` (`TOL_M=5e-6 Q_M=1e4 TOL_D=1e-4 Q_D=5e3`) | districts of every country, municipality areas of Europe (compact arc encoding) |
+| `geodata.ts`, `roads.ts`, `cities.ts` | `tools/buildgeo.js` | countries, roads, places, cities |
+| `postal.ts` | `tools/fixpostal.js` + `tools/buildpostal.py` | postal-code centroids (coordinates outside their own municipality are moved into it) |
+| `municipalities.ts` | `npm run build-municipalities` (`tools/buildeuro.js`) | districts of every country, municipality areas (compact arc encoding) |
 
-## Data
+## Data sources and licences
 
 * Country shapes, roads and populated places: **Natural Earth** 1:10m — public domain.
 * Districts / regions of every country: **Natural Earth admin-1** — public domain (LV, MK, SI, MT dissolved to their regions).
 * Cities and town populations: **GeoNames** cities1000 — CC BY 4.0.
 * Postal codes: **GeoNames** postal code data (via `zauberware/postal-codes-json-xml-csv`) — CC BY 4.0, aggregated per country.
-* European municipalities: official units listed below, cleaned with mapshaper (snap + clean). Where tiny, they are agglomerated
+* Municipalities (Europe and the countries listed below): official units listed below, cleaned with mapshaper (snap + clean). Where tiny, they are agglomerated
   inside their district around the most populated neighbour (a unit under 150 km² **and** 20 000 inhabitants joins a neighbour;
   an area never grows past 1 500 km²). Portuguese concelhos are kept as they are.
-* **Licences must be confirmed before AppSource**: ODbL and CC BY-SA sources carry share-alike obligations for the derived geometry;
-  CAOP (PT) terms to be confirmed with DGT.
+* **Data licences.** Every boundary set keeps the licence of its source (table below). Geometry derived from ODbL and CC BY-SA
+  sources is redistributed under those same licences, openly, in `src/municipalities.ts` of this repository; the attribution is given
+  here and in the AppSource listing.
 
 Positions are centroids for visualisation, not for routing or legal boundaries. Boundaries do not imply any opinion on disputed territories.
 
@@ -104,3 +146,22 @@ Positions are centroids for visualisation, not for routing or legal boundaries. 
 | SM | geoBoundaries ADM1 (9) | Open Data Commons Open Database License 1.0 | OpenStreetMap, Wambacher |
 | UA | geoBoundaries ADM2 (495) | Public Domain | geoBoundaries, Wikimedia Commons |
 | PT | CAOP concelhos (308) | DGT — terms to confirm | Direção-Geral do Território via nmota/caop_GeoJSON |
+| US | geoBoundaries ADM2 (3233) | Public Domain | United States Census Bureau, MAF/TIGER Database |
+| MX | geoBoundaries ADM2 (2457) | Creative Commons Attribution 4.0 (CC BY 4.0) | World Bank |
+| BR | geoBoundaries ADM2 (5570) | Creative Commons Attribution 3.0 Intergovernmental Organisations (CC BY 3.0 IGO) | Instituto Brasileiro de Geografia e Estatística (IBGE), OCHA ROLAC |
+| CN | geoBoundaries ADM2 (2391) | Open Data Commons Public Domain Dedication and License (PDDL) v1.0 | National Administration of Surveying, Mapping and Geoinformation of China, Revolutionary GIS |
+| IN | geoBoundaries ADM2 (736) | Open Data Commons Open Database License 1.0 | Pathways Data Pvt. Ltd., lgdirectory.gov.in |
+| JP | geoBoundaries ADM2 (1745) | Creative Commons Attribution-ShareAlike 2.0 | OpenStreetMap, Wambacher |
+| AU | geoBoundaries ADM2 (547) | Creative Commons Attribution 4.0 International (CC BY 4.0) | Australian Bureau of Statistics |
+| TR | geoBoundaries ADM2 (999) | Open Data Commons Open Database License 1.0 | OpenStreetMap, OSM Boundaries |
+| AR | geoBoundaries ADM2 (526) | Creative Commons Attribution 3.0 Intergovernmental Organisations (CC BY 3.0 IGO) | Instituto Geografico Nacional and UNHCR, OCHA ROLAC |
+| CO | geoBoundaries ADM2 (1122) | Creative Commons Attribution 4.0 International (CC BY 4.0) | Departamento Administrativo Nacional de Estadistica |
+| KR | geoBoundaries ADM2 (229) | Creative Commons Attribution 3.0 License | geoBoundaries, citypopulation.de |
+
+## Privacy
+
+The visual makes no network requests and collects nothing — see [PRIVACY.md](PRIVACY.md).
+
+## License
+
+Code: MIT. Bundled geographic data keeps the licence of each source (see above).

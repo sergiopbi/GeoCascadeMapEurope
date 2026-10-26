@@ -680,6 +680,16 @@
                     "type": {
                         "numeric": true
                     }
+                },
+                "showDonuts": {
+                    "type": {
+                        "bool": true
+                    }
+                },
+                "maxDonuts": {
+                    "type": {
+                        "numeric": true
+                    }
                 }
             }
         },
@@ -779,6 +789,29 @@
                             },
                             {
                                 "value": "highlight"
+                            }
+                        ]
+                    }
+                },
+                "showSearch": {
+                    "type": {
+                        "bool": true
+                    }
+                },
+                "searchScope": {
+                    "type": {
+                        "enumeration": [
+                            {
+                                "value": "all"
+                            },
+                            {
+                                "value": "country"
+                            },
+                            {
+                                "value": "district"
+                            },
+                            {
+                                "value": "municipality"
                             }
                         ]
                     }

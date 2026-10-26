@@ -1,29 +1,34 @@
 {
-  "visual": {
-    "name": "geoCascadeMapEurope",
-    "displayName": "GeoCascade Map \u2013 Europe",
-    "guid": "geoCascadeMapEurope3C5A0E9B1F7D4E2C8A6B5D4C3B2A1908",
-    "visualClassName": "Visual",
-    "version": "1.0.0.0",
-    "description": "Offline map of cities aggregated into countries, districts / regions (worldwide) and municipalities (Europe). Each city is placed inside its own country by municipality name, postal code or coordinates; selection filters the page.",
-    "supportUrl": "https://example.com/geocascade-map/support",
-    "gitHubUrl": ""
-  },
-  "apiVersion": "5.11.1",
-  "author": {
-    "name": "Boris Roncatto",
-    "email": "borisroncattov10@gmail.com"
-  },
-  "assets": {
-    "icon": "assets/icon.png"
-  },
-  "externalJS": null,
-  "style": "style/visual.less",
-  "capabilities": "capabilities.json",
-  "dependencies": null,
-  "stringResources": [
-    "stringResources/en-US/resources.resjson",
-    "stringResources/pt-PT/resources.resjson"
-  ],
-  "version": "1.0.0.0"
+    "visual": {
+        "name": "worldDistrictShapeMap",
+        "displayName": "World District Shape Map",
+        "guid": "worldDistrictShapeMap7D702F8ACA1D8422B7FCA006130E5099",
+        "visualClassName": "Visual",
+        "version": "1.0.0.0",
+        "description": "Shape map that turns a list of cities into countries, districts / regions and municipalities, placing every city inside its own country (by municipality name, postal code or coordinates). Search, drawn zones and selection filter the page. Works offline.",
+        "supportUrl": "https://github.com/sergiopbi/WorldDistrictShapeMap/issues",
+        "gitHubUrl": "https://github.com/sergiopbi/WorldDistrictShapeMap"
+    },
+    "apiVersion": "5.11.1",
+    "author": {
+        "name": "Sergio Borges",
+        "email": "sergio@qahs.com"
+    },
+    "assets": {
+        "icon": "assets/icon.png"
+    },
+    "externalJS": null,
+    "style": "style/visual.less",
+    "capabilities": "capabilities.json",
+    "dependencies": null,
+    "stringResources": [
+        "stringResources/en-US/resources.resjson",
+        "stringResources/pt-PT/resources.resjson",
+        "stringResources/pt-BR/resources.resjson",
+        "stringResources/es-ES/resources.resjson",
+        "stringResources/fr-FR/resources.resjson",
+        "stringResources/de-DE/resources.resjson",
+        "stringResources/it-IT/resources.resjson"
+    ],
+    "version": "1.0.0.0"
 }

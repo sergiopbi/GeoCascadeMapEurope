@@ -1,9 +1,9 @@
 {
-  "name": "geocascade-map-europe",
-  "description": "GeoCascade Map \u2013 Europe \u2014 Power BI custom visual: offline map of cities aggregated into countries, districts and municipalities.",
+  "name": "world-district-shape-map",
+  "description": "World District Shape Map — Power BI custom visual: offline shape map of cities aggregated into countries, districts and municipalities.",
   "repository": {
     "type": "git",
-    "url": "https://github.com/<owner>/geocascade-map-europe"
+    "url": "https://github.com/sergiopbi/WorldDistrictShapeMap.git"
   },
   "license": "MIT",
   "scripts": {
@@ -12,7 +12,7 @@
     "package": "pbiviz package",
     "eslint": "npx eslint . --ext .js,.jsx,.ts,.tsx",
     "lint": "npx eslint .",
-    "build-municipalities": "TOL_M=5e-6 Q_M=1e4 TOL_D=1e-4 Q_D=5e3 node scripts_buildeuro.js"
+    "build-municipalities": "TOL_M=5e-6 Q_M=1e4 TOL_D=1e-4 Q_D=5e3 node tools/buildeuro.js"
   },
   "dependencies": {
     "@types/d3": "7.4.3",
@@ -46,5 +46,5 @@
   "version": "1.0.0",
   "main": "index.js",
   "keywords": [],
-  "author": "Boris Roncatto"
+  "author": "Sergio Borges"
 }

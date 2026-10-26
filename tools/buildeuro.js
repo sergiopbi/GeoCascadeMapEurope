@@ -2,10 +2,12 @@
 //   * Europe: municipality-like areas ("concelhos") — official municipalities where they are PT-sized, and
 //     small municipalities agglomerated around their main town (same district) where they are tiny (ES, FR, IT, CZ…).
 //   * Rest of the world: first-level divisions only (districts / provinces / states, Natural Earth admin-1), kind "d".
-// Usage: node scripts_buildeuro.js [srcDir]
+// Usage: node tools/buildeuro.js [srcDir]
 // Sources: geoBoundaries gbOpen (per-country licences, see README), CAOP (PT), Natural Earth admin-1 (public domain),
 // GeoNames cities1000 (CC BY 4.0, population of the main towns).
 const fs = require('fs');
+// raw source data (geoBoundaries, Natural Earth, CAOP, GeoNames postal codes) — not in the repository, see README › Data
+const DATA = process.env.GEO_DATA_DIR || require('path').join(__dirname, '..', 'data');
 const path = require('path');
 const os = require('os');
 const { execSync } = require('child_process');
@@ -14,11 +16,11 @@ const { presimplify, simplify } = require('topojson-simplify');
 const { quantize, merge, neighbors, feature } = require('topojson-client');
 const d3geo = require('d3-geo');
 
-const SRC = process.argv[2] || path.join(__dirname, 'src');
-const GB = '/root/src_data/gb';
+const SRC = process.argv[2] || path.join(__dirname, '..', 'src');
+const GB = path.join(DATA, 'src_data/gb');
 const TMP = path.join(os.tmpdir(), 'geocascade-euro');
 fs.mkdirSync(TMP, { recursive: true });
-const MAPSHAPER = '/root/ms/node_modules/.bin/mapshaper';
+const MAPSHAPER = process.env.MAPSHAPER || 'npx mapshaper';
 
 // ---- parameters ----
 const AMIN = 150;    // km²: a municipality smaller than this…
@@ -37,10 +39,15 @@ const EUROPE = {
   LU: gbFile('LUX', 3), LV: gbFile('LVA', 2), MC: gbFile('MCO', 1), MD: gbFile('MDA', 1), MK: gbFile('MKD', 2), MT: gbFile('MLT', 1),
   ME: gbFile('MNE', 1), NL: gbFile('NLD', 2), NO: gbFile('NOR', 2), PL: gbFile('POL', 3), RO: gbFile('ROU', 2), SM: gbFile('SMR', 1),
   RS: gbFile('SRB', 2), SK: gbFile('SVK', 3), SI: gbFile('SVN', 2), SE: gbFile('SWE', 2), UA: gbFile('UKR', 2),
-  ES: '/root/gb/esp3.geojson', PT: '/root/nmota_caop/Portugal_Municipalities_clean.geojson'
+  ES: path.join(DATA, 'gb/esp3.geojson'), PT: path.join(DATA, 'nmota_caop/Portugal_Municipalities_clean.geojson'),
+  // outside Europe: countries where Power BI is widely used (counties / municipalities / districts)
+  US: gbFile('USA', 2), MX: gbFile('MEX', 2), BR: gbFile('BRA', 2), CN: gbFile('CHN', 2), IN: gbFile('IND', 2), JP: gbFile('JPN', 2),
+  AU: gbFile('AUS', 2), TR: gbFile('TUR', 2), AR: gbFile('ARG', 2), CO: gbFile('COL', 2), KR: gbFile('KOR', 2)
 };
 // names of these sources are unreliable (encoding / electoral-area codes): the main town name is used instead
-const TOWN_NAMED = new Set(['CZ', 'HU', 'IE', 'EE', 'LV', 'SK']);
+const TOWN_NAMED = new Set(['CZ', 'HU', 'IE', 'EE', 'LV', 'SK', 'CN']);
+// large units outside Europe: a coarser simplification keeps the size reasonable
+const COARSE = new Set(['US', 'MX', 'BR', 'CN', 'IN', 'JP', 'AU', 'TR', 'AR', 'CO', 'KR']);
 // PT concelhos are the reference size: kept as they are
 const NO_AGG = new Set(['PT']);
 // admin-1 that is a municipality list in Natural Earth: districts = its regions
@@ -121,14 +128,14 @@ function makeGrid(items, cell) {
 }
 
 // ---- reference data ----
-const geodataSrc = fs.readFileSync(path.join(__dirname, 'src/geodata.ts'), 'utf8');
+const geodataSrc = fs.readFileSync(path.join(__dirname, '..', 'src/geodata.ts'), 'utf8');
 const COUNTRIES = JSON.parse(/export const COUNTRIES[^=]*=\s*(\[[\s\S]*?\]);\s*\n/.exec(geodataSrc)[1]);
 const byIso3 = new Map(COUNTRIES.map(c => [c[0], c])), byIso2 = new Map(COUNTRIES.map(c => [c[1], c]));
 const TOPO_JSON = JSON.parse(JSON.parse(/export const TOPO_JSON[^=]*=\s*("(?:[^"\\]|\\.)*")/.exec(geodataSrc)[1]));
 const countryFeat = new Map(feature(TOPO_JSON, TOPO_JSON.objects.c).features.map(f => [String(f.id), f]));
 
 const CITIES = (() => {
-  const src = fs.readFileSync(path.join(__dirname, 'src/cities.ts'), 'utf8');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src/cities.ts'), 'utf8');
   const obj = JSON.parse(/export const CITIES[^=]*=\s*(\{[\s\S]*\});?\s*$/.exec(src)[1].replace(/;\s*$/, ''));
   const out = {};
   for (const [cc, s] of Object.entries(obj)) out[cc] = s.split(';').map(e => { const [names, lon, lat, pop] = e.split('|'); return { name: names.split('/')[0], x: +lon, y: +lat, pop: +pop || 0 }; });
@@ -136,7 +143,7 @@ const CITIES = (() => {
 })();
 
 console.log('loading Natural Earth admin-1…');
-const NE = JSON.parse(fs.readFileSync('/root/src_data/ne_admin1.geojson', 'utf8'));
+const NE = JSON.parse(fs.readFileSync(path.join(DATA, 'src_data/ne_admin1.geojson'), 'utf8'));
 const neByCC = new Map();
 for (const f of NE.features) {
   const p = f.properties;
@@ -205,7 +212,7 @@ function cleanUnitName(cc, raw) {
   let s = String(raw || '').trim();
   s = s.replace(/^(gmina|Općina|Grad|Opština|Komuna e|Bashkia)\s+/i, '')
     .replace(/\s+(vald|vallad|linn|pag\.|novads|Municipality|City|Municipio|rajono savivaldybė|miesto savivaldybė|savivaldybė|nor|kommune|kommun)$/i, '')
-    .replace(/,\s*(Stadtkreis|Landkreis|Kreisfreie Stadt|Kreis)$/i, '').replace(/\s+LEA-\d+$/i, '');
+    .replace(/,\s*(Stadtkreis|Landkreis|Kreisfreie Stadt|Kreis)$/i, '').replace(/-(si|gun|gu)$/i, '').replace(/\s+LEA-\d+$/i, '');
   if (s && s === s.toUpperCase() && /[A-Z]{3}/.test(s)) s = titleCase(s);
   return clean(s);
 }
@@ -221,6 +228,8 @@ for (const [cc, file] of Object.entries(EUROPE)) {
   let feats = raw.features.filter(f => f.geometry && polys(f.geometry).length);
   // overseas departments are separate countries (GP, MQ, GF, RE, YT) in the visual
   if (cc === 'FR') feats = feats.filter(f => { const b = bboxOf(polys(f.geometry)); return b[0] > -6 && b[2] < 10 && b[1] > 41 && b[3] < 52; });
+  // the far-west Aleutians sit beyond the antimeridian: dropped so the quantization grid stays fine
+  if (cc === 'US') feats = feats.map(f => { const ps = polys(f.geometry).filter(p => bboxOf([p])[0] < 0); return ps.length ? Object.assign({}, f, { geometry: { type: 'MultiPolygon', coordinates: ps } }) : null; }).filter(Boolean);
   const dists = districtsFromNE(cc);
   if (!dists.length) { console.warn('no districts for', cc); continue; }
   dists.forEach((d, i) => d.i = i);
@@ -273,7 +282,9 @@ for (const [cc, file] of Object.entries(EUROPE)) {
       clusters[a].nb.set(b, (clusters[a].nb.get(b) || 0) + L);
       clusters[b].nb.set(a, (clusters[b].nb.get(a) || 0) + L);
     });
-    const small = c => c.area < AMIN && c.pop < PMIN;
+    // large countries with many small rural municipalities group further (fewer, PT-district-sized areas)
+    const amin = { BR: 1500, MX: 800, CO: 1000 }[cc] || AMIN, pmin = { BR: 60, MX: 40, CO: 40 }[cc] || PMIN;
+    const small = c => c.area < amin && c.pop < pmin;
     // min-heap by (pop, area)
     const heap = [];
     const less = (a, b) => a.pop !== b.pop ? a.pop < b.pop : a.area < b.area;
@@ -285,7 +296,7 @@ for (const [cc, file] of Object.entries(EUROPE)) {
       const c = clusters[e.id];
       if (!c.alive || c.ver !== e.ver || !small(c)) continue;
       let cands = [...c.nb.entries()].map(([id, L]) => ({ t: clusters[id], L })).filter(x => x.t.alive && x.t.district === c.district);
-      const fit = cands.filter(x => x.t.area + c.area <= AMAX);
+      const fit = cands.filter(x => x.t.area + c.area <= Math.max(AMAX, amin * 4));
       if (fit.length) cands = fit; else if (c.area >= AMIN / 3) continue;
       if (!cands.length) continue;
       // prefer the neighbour with the largest population (towns attract their villages), then the longest shared border
@@ -314,8 +325,10 @@ for (const [cc, file] of Object.entries(EUROPE)) {
   });
   let t = topology({ m: { type: 'FeatureCollection', features: cfeats.map(f => ({ type: 'Feature', id: f.k, properties: {}, geometry: f.g })) } });
   t = presimplify(t);
-  t = simplify(t, cc === 'PT' ? Math.min(TOL_M, 3e-6) : TOL_M);
-  t = quantize(t, Q_M);
+  t = simplify(t, cc === 'PT' ? Math.min(TOL_M, 3e-6) : COARSE.has(cc) ? TOL_M * 12 : TOL_M);
+  // quantization grid of ~300 m whatever the country size (Q_M is the minimum)
+  const tb = (() => { let b = [180, 90, -180, -90]; for (const a of t.arcs) for (const [x, y] of a) { if (x < b[0]) b[0] = x; if (y < b[1]) b[1] = y; if (x > b[2]) b[2] = x; if (y > b[3]) b[3] = y; } return b; })();
+  t = quantize(t, Math.max(Q_M, Math.ceil(Math.max(tb[2] - tb[0], tb[3] - tb[1]) / 0.003)));
   t.objects.m.geometries = t.objects.m.geometries.map(g => ({ type: g.type, arcs: g.arcs, id: g.id }));
   delete t.bbox;
   const used = new Set(alive.map(c => c.district));
@@ -354,7 +367,7 @@ console.log('world districts', Object.values(out).filter(x => x.k === 'd').lengt
 console.table(report);
 
 fs.writeFileSync(path.join(SRC, 'municipalities.ts'),
-  '/* Generated by scripts_buildeuro.js — do not edit. */\n' +
+  '/* Generated by tools/buildeuro.js — do not edit. */\n' +
   '/* Europe: municipality-like areas from geoBoundaries gbOpen (licences per country: see README) and CAOP (PT); small municipalities agglomerated\n' +
   '   around their main town. World: first-level divisions from Natural Earth admin-1 (public domain). Town populations: GeoNames (CC BY 4.0). */\n' +
   '// per ISO2: meta "name|parent|code|labelLon|labelLat|districtIndex[|members]" (position = geometry id), topo = TopoJSON (objects.m),\n' +
