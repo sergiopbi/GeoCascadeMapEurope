@@ -193,6 +193,32 @@ function decodeArcs(str: string): number[][][] {
     }
     return arcs;
 }
+/** Compact geometries (see tools/buildeuro.js encodeGeoms): rebuilds objects.m.geometries as MultiPolygons with id = position. */
+function decodeGeoms(str: string): any[] {
+    const out: any[] = [];
+    let i = 0, prev = 0;
+    const rd = (): number => { let v = 0, m = 1, c: number; do { c = B64V[str[i++]]; v += (c & 31) * m; m *= 32; } while (c & 32); return v; };
+    while (i < str.length) {
+        const np = rd();
+        const polys: number[][][] = [];
+        for (let p = 0; p < np; p++) {
+            const nr = rd(); const rings: number[][] = [];
+            for (let r = 0; r < nr; r++) {
+                const na = rd(); const ring: number[] = new Array(na);
+                for (let k = 0; k < na; k++) {
+                    const v = rd(); const rev = v % 2; const z = (v - rev) / 2;
+                    const d = z % 2 ? -(z + 1) / 2 : z / 2;
+                    const a = prev + d; prev = a;
+                    ring[k] = rev ? ~a : a;
+                }
+                rings.push(ring);
+            }
+            polys.push(rings);
+        }
+        out.push(np ? { type: "MultiPolygon", arcs: polys, id: out.length } : { type: null, id: out.length });
+    }
+    return out;
+}
 /** d3-geo wants clockwise exteriors: a polygon covering more than a hemisphere was inverted by simplification. */
 function fixWinding(g: GeoJSON.Geometry | null): void {
     if (!g) return;
@@ -406,6 +432,7 @@ export class GeoIndex {
         if (!t) {
             t = JSON.parse((MUNI as any)[iso2].topo);
             if (typeof t.A === "string") { t.arcs = decodeArcs(t.A); delete t.A; }
+            if (typeof t.G === "string") { t.objects = { m: { type: "GeometryCollection", geometries: decodeGeoms(t.G) } }; delete t.G; }
             this.muniTopos.set(iso2, t);
         }
         return t;

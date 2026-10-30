@@ -24,6 +24,7 @@ Two separate things, don't conflate them:
 - [x] API version 5.11.1 (latest), `npm run package` with zero lint errors.
 - [x] Real support URL (`/issues`) and gitHubUrl in `pbiviz.json`.
 - [x] Privacy policy at a public URL: https://github.com/sergiopbi/World-District-Shape-Map/blob/main/PRIVACY.md
+- [x] Package under 2 MB (Power BI Service import limit) — light data set, see docs/KNOWN_LIMITATIONS.md § 2.
 - [x] 300×300 logo, 5 screenshots 1366×768 (≤ 1 MB each).
 - [ ] Sample .pbix saved in the repo root with the final package imported.
 - [ ] Data licences reviewed (docs/KNOWN_LIMITATIONS.md § 1).
@@ -53,7 +54,7 @@ above.
 <p><b>World District Shape Map</b> turns a plain list of cities into a filled map of countries, districts / regions and municipalities. No geocoding service, no Bing, no API key: all shapes and lookups are inside the visual, so it works offline and in restricted tenants.</p>
 <p><b>Correct by design.</b> Each city is read inside its own country (Country column: name or ISO code), so Madrid, Spain and Madrid, Colombia never mix. A postal code measure resolves duplicate names inside a country. Rows that cannot be placed are never guessed — they are listed with their values, and a click selects them in the other visuals so the data can be fixed.</p>
 <ul>
-<li>Three views: Countries › Districts / regions › Municipalities (municipalities in 54 countries, first-level regions worldwide)</li>
+<li>Three views: Countries › Districts / regions › Municipalities (municipalities in 43 European countries, first-level regions worldwide)</li>
 <li>Areas, bubbles or both, with value labels that follow the measure format</li>
 <li>Detail field shown as donuts, limited to the largest areas for readability</li>
 <li>Search by country, district, municipality or all, with contains / starts with / ends with / is — Enter filters the page and zooms the map</li>

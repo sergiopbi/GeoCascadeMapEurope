@@ -23,9 +23,13 @@ fs.mkdirSync(TMP, { recursive: true });
 const MAPSHAPER = process.env.MAPSHAPER || 'npx mapshaper';
 
 // ---- parameters ----
-const AMIN = 150;    // km²: a municipality smaller than this…
-const PMIN = 20;     // …and with less than this population (thousands) joins a neighbour
-const AMAX = 1500;   // km²: an agglomerated area never grows beyond this (unless it is an isolated tiny unit)
+// MUNI_SET=europe → municipalities for Europe only (the rest of the world gets districts): the light AppSource build
+const MUNI_SET = process.env.MUNI_SET || 'full';
+const AMIN = +(process.env.AMIN || 150);    // km²: a municipality smaller than this…
+const PMIN = +(process.env.PMIN || 20);     // …and with less than this population (thousands) joins a neighbour
+const AMAX = +(process.env.AMAX || 1500);   // km²: an agglomerated area never grows beyond this (unless it is an isolated tiny unit)
+const GRID = +(process.env.GRID || 0.003); // quantization grid in degrees (~300 m)
+const MAX_ALIASES = +(process.env.MAX_ALIASES || 1e9); // agglomerated member names kept per area (matching aliases)
 const TOL_M = +(process.env.TOL_M || 2.5e-6), Q_M = +(process.env.Q_M || 2e4);   // municipality simplification (planar triangle area, deg²) and quantization
 const TOL_D = +(process.env.TOL_D || 3e-5), Q_D = +(process.env.Q_D || 1e4);     // world admin-1
 
@@ -44,6 +48,7 @@ const EUROPE = {
   US: gbFile('USA', 2), MX: gbFile('MEX', 2), BR: gbFile('BRA', 2), CN: gbFile('CHN', 2), IN: gbFile('IND', 2), JP: gbFile('JPN', 2),
   AU: gbFile('AUS', 2), TR: gbFile('TUR', 2), AR: gbFile('ARG', 2), CO: gbFile('COL', 2), KR: gbFile('KOR', 2)
 };
+if (MUNI_SET === 'europe') for (const cc of ['US', 'MX', 'BR', 'CN', 'IN', 'JP', 'AU', 'TR', 'AR', 'CO', 'KR']) delete EUROPE[cc];
 // names of these sources are unreliable (encoding / electoral-area codes): the main town name is used instead
 const TOWN_NAMED = new Set(['CZ', 'HU', 'IE', 'EE', 'LV', 'SK', 'CN']);
 // large units outside Europe: a coarser simplification keeps the size reasonable
@@ -78,7 +83,9 @@ const LOCAL_NAME = { IT: 'name_it', FR: 'name_fr', DE: 'name_de', ES: 'name_es',
 
 // ---- helpers ----
 const normKey = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-const clean = s => String(s || '').replace(/[|;/]/g, ' ').replace(/\s+/g, ' ').trim();
+// UTF-8 read as Latin-1 in some sources ("WaitematÄ\u0081" → "Waitematā")
+const unMojibake = s => /[\u00C2-\u00DF][\u0080-\u00BF]/.test(s) ? (() => { const d = Buffer.from(s, 'latin1').toString('utf8'); return d.includes('\uFFFD') ? s : d; })() : s;
+const clean = s => unMojibake(String(s || '')).replace(/[|;/]/g, ' ').replace(/\s+/g, ' ').trim();
 const latin = s => !!s && /^[\p{Script=Latin}\p{N}\s'’().,\-]+$/u.test(s);
 function polys(g) { return !g ? [] : g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : []; }
 function ringArea(r) { let a = 0; for (let i = 0, j = r.length - 1; i < r.length; j = i++) a += (r[j][0] + r[i][0]) * (r[j][1] - r[i][1]); return Math.abs(a / 2); }
@@ -117,7 +124,24 @@ function encodeArcs(arcs) {
   return o.join('');
 }
 /** topology -> JSON string with the arcs replaced by the compact string "A" */
-function packTopo(t) { const arcs = t.arcs; const c = Object.assign({}, t, { arcs: [] }); c.A = encodeArcs(arcs); return JSON.stringify(c); }
+/** geometries -> compact string "G": per geometry (in id order) varint polygon count, per polygon ring count, per ring arc count,
+ *  then each arc reference as zig-zag(delta to the previous arc number) * 2 + reversed */
+function encodeGeoms(geoms) {
+  const o = []; let prev = 0;
+  const ref = r => { const rev = r < 0 ? 1 : 0, a = rev ? ~r : r, d = a - prev; prev = a; encVar((d < 0 ? -2 * d - 1 : 2 * d) * 2 + rev, o); };
+  for (const g of geoms) {
+    const polys = !g || !g.arcs ? [] : g.type === 'Polygon' ? [g.arcs] : g.type === 'MultiPolygon' ? g.arcs : [];
+    encVar(polys.length, o);
+    for (const p of polys) { encVar(p.length, o); for (const ring of p) { encVar(ring.length, o); ring.forEach(ref); } }
+  }
+  return o.join('');
+}
+function packTopo(t) {
+  const arcs = t.arcs; const c = Object.assign({}, t, { arcs: [] }); c.A = encodeArcs(arcs);
+  const gs = t.objects.m.geometries.slice().sort((a, b) => a.id - b.id);
+  if (gs.every((g, i) => g.id === i)) { c.G = encodeGeoms(gs); c.objects = { m: { type: 'GeometryCollection', geometries: [] } }; }
+  return JSON.stringify(c);
+}
 
 /** spatial grid over items with .bb */
 function makeGrid(items, cell) {
@@ -321,14 +345,14 @@ for (const [cc, file] of Object.entries(EUROPE)) {
     const al = new Set();
     for (const i of c.members) { const u = units[i]; if (u.official) al.add(clean(u.official)); for (const a of u.alts) al.add(clean(a)); }
     al.delete(clean(main.name));
-    return { k, c, g, name: main.name, code: c.members.length === 1 ? main.code : '', label, n: c.members.length, aliases: [...al].filter(Boolean) };
+    return { k, c, g, name: main.name, code: c.members.length === 1 ? main.code : '', label, n: c.members.length, aliases: [...al].filter(Boolean).slice(0, MAX_ALIASES) };
   });
   let t = topology({ m: { type: 'FeatureCollection', features: cfeats.map(f => ({ type: 'Feature', id: f.k, properties: {}, geometry: f.g })) } });
   t = presimplify(t);
   t = simplify(t, cc === 'PT' ? Math.min(TOL_M, 3e-6) : COARSE.has(cc) ? TOL_M * 12 : TOL_M);
   // quantization grid of ~300 m whatever the country size (Q_M is the minimum)
   const tb = (() => { let b = [180, 90, -180, -90]; for (const a of t.arcs) for (const [x, y] of a) { if (x < b[0]) b[0] = x; if (y < b[1]) b[1] = y; if (x > b[2]) b[2] = x; if (y > b[3]) b[3] = y; } return b; })();
-  t = quantize(t, Math.max(Q_M, Math.ceil(Math.max(tb[2] - tb[0], tb[3] - tb[1]) / 0.003)));
+  t = quantize(t, Math.max(Q_M, Math.ceil(Math.max(tb[2] - tb[0], tb[3] - tb[1]) / GRID)));
   t.objects.m.geometries = t.objects.m.geometries.map(g => ({ type: g.type, arcs: g.arcs, id: g.id }));
   delete t.bbox;
   const used = new Set(alive.map(c => c.district));

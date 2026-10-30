@@ -7,10 +7,9 @@ country — no geocoding service, no Bing, no API key, no web access.
 ## What it does
 
 - Three views, switched with the buttons on the map: *Countries*, *Districts / regions*
-  (first-level divisions of every country) and *Municipalities* (Europe, USA counties,
-  Brazil, Mexico, Colombia, Argentina, China, India, Japan, South Korea, Turkey,
-  Australia). Municipalities are offered for one selected country, for selected
-  districts, or when the data has a single country.
+  (first-level divisions of every country) and *Municipalities* (43 European countries).
+  Municipalities are offered for one selected country, for selected districts, or when
+  the data has a single country.
 - Every city row is placed **inside its own country** (Country column): official
   municipality name first, then postal code, then city name, then latitude/longitude.
   Cities with the same name in different countries (Madrid ES / Madrid CO) stay
@@ -32,7 +31,7 @@ country — no geocoding service, no Bing, no API key, no web access.
   Numbers follow the measure's format string.
 - Zoom with the wheel, pinch or the **+ / −** buttons; the view is kept when the data
   changes and reset (⤢) on demand.
-- Built-in basemap (ocean, land, main roads, place names per area). Areas without data
+- Built-in basemap (ocean, land, place names per area). Areas without data
   still show their name on hover.
 - Tooltips, context menu, keyboard navigation, high contrast, landing page, sync
   slicers, warning icon. Localized: English (default), Português (PT/BR), Español,
@@ -69,6 +68,14 @@ country — no geocoding service, no Bing, no API key, no web access.
 - **Zoom** is only reset when the level, view or drill focus changes; animated zooms
   (search, + / −, reset) finish even when a host update interrupts them.
 
+## Package size (AppSource build)
+
+Power BI Service only imports visual packages of about 2 MB, so this build ships a light
+data set (~1.8 MB package): municipalities for Europe only (districts / regions for the
+rest of the world), small European municipalities grouped into larger areas, simplified
+outlines, cities with 30 000+ inhabitants, postal codes one digit coarser, no basemap
+roads. `tools/lite.js` derives it from the full data.
+
 ## Build
 
 ```bash
@@ -84,17 +91,18 @@ in the repository (`GEO_DATA_DIR`, default `./data`):
 |---|---|---|
 | `geodata.ts`, `roads.ts`, `cities.ts` | `tools/buildgeo.js` | countries, roads, places, cities |
 | `postal.ts` | `tools/fixpostal.js` + `tools/buildpostal.py` | postal-code centroids (coordinates outside their own municipality are moved into it) |
-| `municipalities.ts` | `npm run build-municipalities` (`tools/buildeuro.js`) | districts of every country, municipality areas (compact arc encoding) |
+| `municipalities.ts` | `npm run build-municipalities` (`tools/buildeuro.js`) | districts of every country, municipality areas of Europe (compact arc + geometry encoding) |
+| light data set | `npm run build-lite` (`tools/lite.js`) | cities 30k+, coarser postal codes and country outlines, no roads |
 
 ## Data sources and licences
 
 * Country shapes, roads and populated places: **Natural Earth** 1:10m — public domain.
 * Districts / regions of every country: **Natural Earth admin-1** — public domain (LV, MK, SI, MT dissolved to their regions).
-* Cities and town populations: **GeoNames** cities1000 — CC BY 4.0.
+* Cities and town populations: **GeoNames** cities1000 — CC BY 4.0 (places with 30 000+ inhabitants in this build).
 * Postal codes: **GeoNames** postal code data (via `zauberware/postal-codes-json-xml-csv`) — CC BY 4.0, aggregated per country.
-* Municipalities (Europe and the countries listed below): official units listed below, cleaned with mapshaper (snap + clean). Where tiny, they are agglomerated
-  inside their district around the most populated neighbour (a unit under 150 km² **and** 20 000 inhabitants joins a neighbour;
-  an area never grows past 1 500 km²). Portuguese concelhos are kept as they are.
+* Municipalities (43 European countries): official units listed below, cleaned with mapshaper (snap + clean). Where tiny, they are agglomerated
+  inside their district around the most populated neighbour (a unit under 300 km² **and** 30 000 inhabitants joins a neighbour;
+  an area never grows past 2 500 km²). Portuguese concelhos are kept as they are.
 * **Data licences.** Every boundary set keeps the licence of its source (table below). Geometry derived from ODbL and CC BY-SA
   sources is redistributed under those same licences, openly, in `src/municipalities.ts` of this repository; the attribution is given
   here and in the AppSource listing.
@@ -146,17 +154,6 @@ Positions are centroids for visualisation, not for routing or legal boundaries. 
 | SM | geoBoundaries ADM1 (9) | Open Data Commons Open Database License 1.0 | OpenStreetMap, Wambacher |
 | UA | geoBoundaries ADM2 (495) | Public Domain | geoBoundaries, Wikimedia Commons |
 | PT | CAOP concelhos (308) | DGT — terms to confirm | Direção-Geral do Território via nmota/caop_GeoJSON |
-| US | geoBoundaries ADM2 (3233) | Public Domain | United States Census Bureau, MAF/TIGER Database |
-| MX | geoBoundaries ADM2 (2457) | Creative Commons Attribution 4.0 (CC BY 4.0) | World Bank |
-| BR | geoBoundaries ADM2 (5570) | Creative Commons Attribution 3.0 Intergovernmental Organisations (CC BY 3.0 IGO) | Instituto Brasileiro de Geografia e Estatística (IBGE), OCHA ROLAC |
-| CN | geoBoundaries ADM2 (2391) | Open Data Commons Public Domain Dedication and License (PDDL) v1.0 | National Administration of Surveying, Mapping and Geoinformation of China, Revolutionary GIS |
-| IN | geoBoundaries ADM2 (736) | Open Data Commons Open Database License 1.0 | Pathways Data Pvt. Ltd., lgdirectory.gov.in |
-| JP | geoBoundaries ADM2 (1745) | Creative Commons Attribution-ShareAlike 2.0 | OpenStreetMap, Wambacher |
-| AU | geoBoundaries ADM2 (547) | Creative Commons Attribution 4.0 International (CC BY 4.0) | Australian Bureau of Statistics |
-| TR | geoBoundaries ADM2 (999) | Open Data Commons Open Database License 1.0 | OpenStreetMap, OSM Boundaries |
-| AR | geoBoundaries ADM2 (526) | Creative Commons Attribution 3.0 Intergovernmental Organisations (CC BY 3.0 IGO) | Instituto Geografico Nacional and UNHCR, OCHA ROLAC |
-| CO | geoBoundaries ADM2 (1122) | Creative Commons Attribution 4.0 International (CC BY 4.0) | Departamento Administrativo Nacional de Estadistica |
-| KR | geoBoundaries ADM2 (229) | Creative Commons Attribution 3.0 License | geoBoundaries, citypopulation.de |
 
 ## Privacy
 

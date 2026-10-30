@@ -12,7 +12,8 @@
     "package": "pbiviz package",
     "eslint": "npx eslint . --ext .js,.jsx,.ts,.tsx",
     "lint": "npx eslint .",
-    "build-municipalities": "TOL_M=5e-6 Q_M=1e4 TOL_D=1e-4 Q_D=5e3 node tools/buildeuro.js"
+    "build-municipalities": "MUNI_SET=europe AMIN=300 PMIN=30 AMAX=2500 TOL_M=2e-4 Q_M=2e3 GRID=0.02 TOL_D=4e-3 Q_D=1500 MAX_ALIASES=6 node tools/buildeuro.js",
+    "build-lite": "node tools/lite.js"
   },
   "dependencies": {
     "@types/d3": "7.4.3",
